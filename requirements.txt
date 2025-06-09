@@ -1,0 +1,12 @@
+# Application dependencies for BazosChecker
+flask==3.1.1
+requests==2.32.3
+beautifulsoup4==4.13.4
+python-dotenv==1.1.0
+apscheduler==3.11.0
+flask-socketio==5.5.1
+# Additional dependencies
+lxml==5.1.0
+eventlet==0.35.2
+python-engineio==4.9.0
+Werkzeug==3.0.2

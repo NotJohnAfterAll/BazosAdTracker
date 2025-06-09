@@ -1,0 +1,331 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Bazos.cz Ad Tracker</title>
+    
+    <!-- Favicon -->
+    <link rel="icon" type="image/png" href="{{ url_for('static', filename='img/favicon.png') }}">
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- Inter font -->
+    <link rel="stylesheet" href="https://rsms.me/inter/inter.css">
+    
+    <!-- Font Awesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <!-- Custom CSS -->
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
+    
+</head>
+<body class="min-h-screen bg-gray-50">
+    <!-- Notification sound -->
+    <audio id="notification-sound" src="{{ url_for('static', filename='sounds/notification.mp3') }}"></audio>
+
+    <div class="container mx-auto px-4 py-8">
+        <header class="mb-8">
+            <div class="flex justify-between items-center mb-6">
+                <h1 class="text-3xl font-bold">Bazos.cz Ad Tracker</h1>
+                <div class="flex items-center space-x-3">
+                    <div class="text-xs text-gray-600 hidden sm:block">
+                        <div class="flex space-x-4">
+                            <div>
+                                <span>Total checks:</span>
+                                <span id="stats-total-checks" class="font-semibold">0</span>
+                            </div>
+                            <div>
+                                <span>Total ads:</span>
+                                <span id="stats-total-ads" class="font-semibold">0</span>
+                            </div>
+                            <div>
+                                <span>Uptime:</span>
+                                <span id="stats-uptime" class="font-semibold">0 minutes</span>
+                            </div>
+                        </div>
+                    </div>
+                      <!-- Settings button -->
+                    <button id="settings-btn" class="btn btn-secondary">
+                        <i class="fas fa-cog mr-2"></i>
+                        <span>Settings</span>
+                    </button>
+                    
+                    <!-- Manual check button -->
+                    <button id="manual-check-btn" class="btn btn-primary">
+                        <i class="fas fa-sync mr-2"></i>
+                        <span>Check Now</span>
+                    </button>
+                    
+                    <!-- Theme toggle -->
+                    <button id="theme-toggle" class="btn btn-secondary">
+                        <i class="fas fa-moon mr-2"></i>
+                        <span>Theme</span>
+                    </button>
+                </div>
+            </div>
+            
+            <!-- Keyword management -->
+            <div class="card p-4 mb-6">
+                <div class="flex flex-col md:flex-row gap-4 items-start md:items-center">
+                    <div class="flex-grow">
+                        <label for="new-keyword" class="block text-sm font-medium text-gray-700 mb-1">Add New Keyword</label>
+                        <div class="flex gap-2">
+                            <input type="text" id="new-keyword" class="input w-full" placeholder="Enter keyword to track">
+                            <button id="add-keyword" class="btn btn-primary whitespace-nowrap">
+                                <i class="fas fa-plus mr-2"></i> Add
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <div class="w-full md:w-auto">
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Active Keywords</label>
+                        <div id="keywords-list" class="flex flex-wrap gap-2 min-h-[40px]">
+                            <div class="skeleton w-20 h-6"></div>
+                            <div class="skeleton w-24 h-6"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+              <!-- Navigation tabs -->
+            <nav class="border-b border-gray-200">
+                <ul class="flex space-x-8">
+                    <li>
+                        <button class="tab active" data-tab="recent">Recent Ads</button>
+                    </li>
+                    <li>
+                        <button class="tab" data-tab="keywords">By Keywords</button>
+                    </li>
+                    <li>
+                        <button class="tab" data-tab="favorites">
+                            <i class="fas fa-star text-yellow-500 mr-2"></i>Favorites
+                        </button>
+                    </li>
+                    <li>
+                        <button class="tab" data-tab="changes">Changes Log</button>
+                    </li>
+                </ul>
+            </nav>
+        </header>
+          <!-- Status indicator -->
+        <div id="status-banner" class="hidden bg-green-100 border-l-4 border-green-500 p-4 mb-4">
+            <div class="flex">
+                <div class="flex-shrink-0">
+                    <i id="status-icon" class="fas fa-info-circle text-green-500"></i>
+                </div>
+                <div class="ml-3">
+                    <p id="status-message" class="text-sm text-green-700"></p>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Tab content -->
+        <main>            <!-- Recent Ads Tab -->
+            <section id="recent-tab" class="tab-content">
+                <h2 class="text-xl font-semibold mb-4">Recent Advertisements</h2>
+                <div id="recent-ads" class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3">
+                    <!-- Skeleton loading -->
+                    <div class="card">
+                        <div class="skeleton h-48 w-full"></div>
+                        <div class="p-4">
+                            <div class="skeleton h-6 w-3/4 mb-2"></div>
+                            <div class="skeleton h-4 w-1/2 mb-4"></div>
+                            <div class="skeleton h-20 w-full mb-4"></div>
+                            <div class="skeleton h-6 w-1/3"></div>
+                        </div>
+                    </div>
+                    <div class="card">
+                        <div class="skeleton h-48 w-full"></div>
+                        <div class="p-4">
+                            <div class="skeleton h-6 w-3/4 mb-2"></div>
+                            <div class="skeleton h-4 w-1/2 mb-4"></div>
+                            <div class="skeleton h-20 w-full mb-4"></div>
+                            <div class="skeleton h-6 w-1/3"></div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+              <!-- Keywords Tab -->
+            <section id="keywords-tab" class="tab-content hidden">                <div class="mb-4 flex flex-col sm:flex-row gap-4">
+                    <div class="flex-1">
+                        <label for="keyword-filter" class="form-label">Select Keyword</label>
+                        <select id="keyword-filter" class="input w-full">
+                            <option value="">Loading keywords...</option>
+                        </select>
+                    </div>
+                    
+                    <div class="flex-1">
+                        <label for="ad-search" class="form-label">Search in Results</label>
+                        <div class="relative">
+                            <input type="text" id="ad-search" class="input w-full pl-9" placeholder="Search by title, description, price...">
+                            <div class="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none">
+                                <i class="fas fa-search text-gray-400"></i>
+                            </div>
+                            <button id="clear-search" class="absolute inset-y-0 right-0 flex items-center pr-3 text-gray-400 hover:text-gray-600 hidden">
+                                <i class="fas fa-times"></i>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="flex justify-between items-center mb-4">
+                    <h2 id="keyword-title" class="text-xl font-semibold">Advertisements by Keyword</h2>
+                    <span id="results-count" class="text-sm text-gray-500">0 results</span>
+                </div>
+                
+                <div id="keyword-ads" class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3">
+                    <!-- Content will be loaded dynamically -->
+                </div>
+                
+                <!-- Pagination controls -->
+                <div id="pagination-controls" class="flex justify-center items-center mt-6 space-x-2 hidden">
+                    <button id="prev-page" class="btn btn-secondary">
+                        <i class="fas fa-chevron-left mr-2"></i>Previous
+                    </button>
+                    <div id="page-info" class="text-sm text-gray-600">
+                        Page <span id="current-page">1</span> of <span id="total-pages">1</span>
+                    </div>
+                    <button id="next-page" class="btn btn-secondary">
+                        Next<i class="fas fa-chevron-right ml-2"></i>
+                    </button>
+                </div>
+                
+                <!-- No results message -->
+                <div id="no-results" class="hidden text-center py-10">
+                    <div class="text-gray-400 mb-3">
+                        <i class="fas fa-search fa-3x"></i>
+                    </div>
+                    <h3 class="text-lg font-medium text-gray-600">No matching advertisements found</h3>
+                    <p class="text-gray-500">Try adjusting your search query</p>
+                </div>
+            </section>
+            
+            <!-- Favorites Tab -->
+            <section id="favorites-tab" class="tab-content hidden">
+                <h2 class="text-xl font-semibold mb-4">Favorite Advertisements</h2>
+                
+                <div id="favorites-container" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                    <!-- Favorites will be loaded dynamically -->
+                </div>
+                
+                <!-- No favorites message -->
+                <div id="no-favorites" class="text-center py-10 hidden">
+                    <div class="text-yellow-400 mb-3">
+                        <i class="fas fa-star fa-3x"></i>
+                    </div>
+                    <h3 class="text-lg font-medium text-gray-600">No favorites yet</h3>
+                    <p class="text-gray-500">Click the star icon on ads to add them to favorites</p>
+                </div>
+            </section>
+            
+            <!-- Changes Log Tab -->
+            <section id="changes-tab" class="tab-content hidden">
+                <h2 class="text-xl font-semibold mb-4">Changes Log</h2>
+                
+                <div class="flex gap-4 mb-4">
+                    <button id="new-ads-filter" class="btn btn-primary">
+                        <i class="fas fa-plus-circle mr-2"></i> New Ads
+                    </button>
+                    <button id="deleted-ads-filter" class="btn btn-secondary">
+                        <i class="fas fa-trash mr-2"></i> Deleted Ads
+                    </button>
+                    <button id="all-changes-filter" class="btn btn-secondary">
+                        <i class="fas fa-sync mr-2"></i> All Changes
+                    </button>
+                </div>
+                
+                <div id="changes-list" class="space-y-4">
+                    <p class="text-sm text-gray-500">No changes detected yet. Changes will appear here when new ads are found or old ones are removed.</p>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <!-- Settings modal -->
+    <div id="settings-modal" class="modal-backdrop">
+        <div class="modal-content">
+            <div class="p-4 border-b border-gray-200">
+                <div class="flex justify-between items-center">
+                    <h3 class="text-lg font-semibold">Settings</h3>
+                    <button id="close-settings" class="text-gray-500 hover:text-gray-700">
+                        <i class="fas fa-times"></i>
+                    </button>
+                </div>
+            </div>
+            <div class="p-4">
+                <div class="mb-4">
+                    <h4 class="text-md font-medium mb-2">Notifications</h4>
+                    
+                    <div class="flex justify-between items-center py-2 border-b border-gray-100">
+                        <div>
+                            <p class="font-medium">Browser Notifications</p>
+                            <p class="text-sm text-gray-500">Show notifications when new ads are found</p>
+                        </div>
+                        <div class="flex items-center">
+                            <button id="notification-permission-btn" class="btn btn-secondary text-xs mr-2 hidden">
+                                Enable
+                            </button>
+                            <label class="switch">
+                                <input type="checkbox" id="notifications-toggle" checked>
+                                <span class="slider"></span>
+                            </label>
+                        </div>
+                    </div>
+                    
+                    <div class="flex justify-between items-center py-2 border-b border-gray-100">
+                        <div>
+                            <p class="font-medium">Sound Alerts</p>
+                            <p class="text-sm text-gray-500">Play sound when new ads are found</p>
+                        </div>
+                        <label class="switch">
+                            <input type="checkbox" id="sound-toggle" checked>
+                            <span class="slider"></span>
+                        </label>
+                    </div>
+                </div>
+                
+                <div class="mb-4">
+                    <h4 class="text-md font-medium mb-2">System Information</h4>
+                    <div class="bg-gray-50 p-3 rounded">
+                        <div class="grid grid-cols-2 gap-y-2 text-sm">
+                            <div>Check Interval:</div>
+                            <div class="text-right font-medium">5 minutes</div>
+                            
+                            <div>Average Check Duration:</div>
+                            <div id="stats-avg-duration" class="text-right font-medium">0 ms</div>
+                            
+                            <div>Total Checks:</div>
+                            <div id="stats-total-checks-detail" class="text-right font-medium">0</div>
+                            
+                            <div>Total Ads Found:</div>
+                            <div id="stats-total-ads-detail" class="text-right font-medium">0</div>
+                            
+                            <div>System Uptime:</div>
+                            <div id="stats-uptime-detail" class="text-right font-medium">0 minutes</div>
+                        </div>
+                    </div>
+                </div>
+            </div>                <div class="p-4 bg-gray-50 rounded-b">
+                <div class="flex justify-between">
+                    <button id="refresh-stats-btn" class="btn btn-secondary">
+                        <i class="fas fa-sync mr-2"></i>
+                        Refresh Stats
+                    </button>
+                    <button id="close-settings-btn" class="btn btn-primary">
+                        Close
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Socket.IO -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.6.1/socket.io.js"></script>
+    
+    <!-- Notification manager -->
+    <script src="{{ url_for('static', filename='js/notifications.js') }}"></script>
+    
+    <!-- Application script -->
+    <script src="{{ url_for('static', filename='js/app.js') }}"></script>
+</body>
+</html>
