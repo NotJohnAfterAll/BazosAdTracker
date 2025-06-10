@@ -1,5 +1,5 @@
 {
-  "simulate_removal": false,
+  "simulate_removal": true,
   "ad_id_to_remove": "203572613",
-  "description": "Test configuration disabled - ad 203572613 should reappear as new"
+  "description": "Test configuration enabled - ad 203572613 will be removed and reappear as new"
 }

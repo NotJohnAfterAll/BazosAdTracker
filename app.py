@@ -127,10 +127,12 @@ def check_for_new_ads():
     """
     Main function to check for new ads for all tracked keywords.
     This function:
-    1. Fetches current ads for each keyword
-    2. Compares with previously stored ads to identify new/deleted ads
-    3. Updates stored ads and statistics
-    4. Notifies clients via WebSocket if changes detected
+    1. Clears all "NEW" tags from previous scan
+    2. Fetches current ads for each keyword
+    3. Compares with previously stored ads to identify new/deleted ads
+    4. Marks new ads with "NEW" tag
+    5. Updates stored ads and statistics
+    6. Notifies clients via WebSocket if changes detected
     """
     global all_ads
     has_new_ads = False
@@ -140,6 +142,14 @@ def check_for_new_ads():
     
     # Track performance for statistics
     start_time = time.time()
+    
+    # Clear all "NEW" tags from previous scan
+    print("Clearing all NEW tags from previous scan...")
+    for keyword in all_ads:
+        for ad in all_ads[keyword]:
+            if ad.get('isNew'):
+                ad['isNew'] = False
+                print(f"Cleared NEW tag from ad {ad.get('id', 'unknown')} in keyword '{keyword}'")
     
     # Reload keywords to include any new ones added via web interface
     current_keywords = load_keywords()
@@ -180,8 +190,7 @@ def check_for_new_ads():
         
         print(f"Previous ads count for '{keyword}': {len(previous_ads)}")
         print(f"Current ads count for '{keyword}': {len(current_ads)}")
-        
-        # Find new ads
+          # Find new ads
         new_ids = current_ids - previous_ids
         if new_ids:
             has_new_ads = True
@@ -190,8 +199,11 @@ def check_for_new_ads():
             
             print(f"Found {len(new_ids)} new ads for '{keyword}': {new_ids}")
             
+            # Mark new ads with NEW tag and add to notification list
             for ad in current_ads:
                 if ad['id'] in new_ids:
+                    ad['isNew'] = True  # Mark as new
+                    print(f"Marked ad {ad['id']} as NEW for keyword '{keyword}'")
                     new_ads.append({
                         'keyword': keyword,
                         'ad': ad

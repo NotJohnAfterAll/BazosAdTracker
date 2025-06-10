@@ -757,17 +757,24 @@ document.addEventListener('DOMContentLoaded', function() {
         
         const card = document.createElement('div');
         card.className = 'card transition-all hover:shadow-md';
-        card.setAttribute('data-ad-id', ad.id);        // Add pulsating effect for new ads
-        if (isNewAd) {
+        card.setAttribute('data-ad-id', ad.id);        // Add pulsating effect for new ads (check both isNewAd parameter and ad.isNew property)
+        if (isNewAd || ad.isNew) {
             card.classList.add('new-item-pulse');
-            // Remove the effect after animation completes (8 seconds)
+            // Remove the effect after animation completes (10 seconds)
             setTimeout(() => {
                 card.classList.remove('new-item-pulse');
-            }, 8000);
+            }, 10000);
         }
-        
-        const imageContainer = document.createElement('div');
+          const imageContainer = document.createElement('div');
         imageContainer.className = 'h-48 bg-gray-100 relative overflow-hidden';
+        
+        // NEW tag overlay (positioned over image)
+        if (isNewAd || ad.isNew) {
+            const newTag = document.createElement('div');
+            newTag.className = 'absolute top-2 left-2 z-20 bg-red-500 text-white px-2 py-1 text-xs font-bold uppercase rounded shadow-lg';
+            newTag.textContent = 'NEW';
+            imageContainer.appendChild(newTag);
+        }
         
         // Favorite button
         const favoriteBtn = document.createElement('button');
@@ -840,15 +847,22 @@ document.addEventListener('DOMContentLoaded', function() {
         price.className = 'font-bold text-primary whitespace-nowrap ml-2';
         price.textContent = ad.price || 'Price not listed';
         titleRow.appendChild(price);
-        
-        content.appendChild(titleRow);
+          content.appendChild(titleRow);
+          // Badges container for keyword badge
+        const badgesContainer = document.createElement('div');
+        badgesContainer.className = 'flex gap-2 mb-2';
         
         // Keyword badge if provided
         if (keywordLabel) {
             const badge = document.createElement('div');
-            badge.className = 'badge bg-secondary text-secondary-foreground mb-2 inline-block';
+            badge.className = 'badge bg-secondary text-secondary-foreground inline-block';
             badge.textContent = keywordLabel;
-            content.appendChild(badge);
+            badgesContainer.appendChild(badge);
+        }
+        
+        // Only add badges container if it has content
+        if (badgesContainer.children.length > 0) {
+            content.appendChild(badgesContainer);
         }
         
         // Description
