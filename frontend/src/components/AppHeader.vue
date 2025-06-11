@@ -1,16 +1,15 @@
 <template>
   <header class="mb-8">
     <div class="flex justify-between items-center mb-6">
-      <h1 class="text-3xl font-bold">Bazos.cz Ad Tracker</h1>      <div class="flex items-center space-x-3">        <div class="text-xs text-muted-foreground">
-          <div class="flex space-x-4">
+      <h1 class="text-3xl font-bold">Bazos.cz Ad Tracker</h1>      <div class="flex items-center space-x-3">        <div class="text-xs text-muted-foreground">          <div class="flex space-x-4">
             <div>
-              <span>Total checks:</span>
+              <span>Total checks: </span>
               <span class="font-semibold">{{ stats.total_checks }}</span>
             </div>
             <div>
-              <span>Total ads:</span>
+              <span>Total ads: </span>
               <span class="font-semibold">{{ stats.total_ads }}</span>
-            </div>            <div>
+            </div><div>
               <span>Uptime: </span>
               <span class="font-semibold">{{ stats.uptime }}</span>
             </div>
