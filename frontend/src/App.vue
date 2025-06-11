@@ -184,28 +184,30 @@ const initSocket = () => {
   )
   
   console.log('🔍 Socket.IO connecting to:', socketUrl)
-  
-  socket.value = io(socketUrl, {
-    // Cloudflare WebSocket configuration
-    transports: ['polling', 'websocket'], // Start with polling, upgrade to websocket
-    upgrade: true,
-    rememberUpgrade: true,
-    timeout: 20000,
+    socket.value = io(socketUrl, {
+    // Cloudflare WebSocket configuration - start with polling only
+    transports: ['polling'], // Use polling only, disable websockets for Cloudflare compatibility
+    upgrade: false, // Don't upgrade to websockets automatically
+    rememberUpgrade: false,
+    timeout: 30000, // Increased timeout for Cloudflare
     forceNew: true,
     // Cloudflare-friendly options
-    pingTimeout: 60000,
-    pingInterval: 25000,
+    pingTimeout: 120000, // Increased for Cloudflare
+    pingInterval: 60000, // Increased for Cloudflare
     // Retry configuration
     reconnection: true,
-    reconnectionAttempts: 5,
-    reconnectionDelay: 1000,
-    reconnectionDelayMax: 5000,
-    maxReconnectionAttempts: 5,
+    reconnectionAttempts: 10, // More attempts for Cloudflare
+    reconnectionDelay: 2000,
+    reconnectionDelayMax: 10000,
+    maxReconnectionAttempts: 10,
     // Path configuration
     path: '/socket.io/',
     // Security
     secure: window.location.protocol === 'https:',
-    rejectUnauthorized: import.meta.env.PROD
+    rejectUnauthorized: import.meta.env.PROD,
+    // Additional Cloudflare settings
+    autoConnect: true,
+    withCredentials: false
   })
   
   socket.value.on('connect', () => {

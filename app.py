@@ -16,7 +16,7 @@ import json
 import time
 import logging
 from datetime import datetime
-from flask import Flask, jsonify, request, send_from_directory, send_file
+from flask import Flask, jsonify, request, send_from_directory, send_file, make_response
 from flask_socketio import SocketIO
 from flask_cors import CORS
 from apscheduler.schedulers.background import BackgroundScheduler
@@ -48,23 +48,34 @@ cors_origins = ['*'] if is_production else [
     'http://127.0.0.1:3000', 'https://127.0.0.1:3000'
 ]
 
+# Add your Cloudflare domain to CORS origins in production
+if is_production:
+    cors_origins = [
+        'https://bazos.notjohn.net',
+        'http://bazos.notjohn.net',
+        '*'  # Allow all for now, can be restricted later
+    ]
+
 CORS(app, origins=cors_origins)
 
 # Configure Socket.IO for Cloudflare compatibility
 socketio = SocketIO(
     app, 
     cors_allowed_origins=cors_origins,
-    # Cloudflare WebSocket configuration
-    transports=['polling', 'websocket'],  # Allow both transports, start with polling
-    ping_timeout=60,
-    ping_interval=25,
+    # Cloudflare WebSocket configuration - prefer polling first
+    transports=['polling'],  # Start with polling only, no websockets initially
+    ping_timeout=120,  # Increased timeout for Cloudflare
+    ping_interval=60,  # Increased interval
     # Additional settings for better Cloudflare compatibility
     logger=False,  # Disable logging for production
     engineio_logger=False,
-    allow_upgrades=True,
+    allow_upgrades=False,  # Disable upgrades to websockets for now
     http_compression=True,
     # Handle connection timeouts better
-    max_http_buffer_size=1000000
+    max_http_buffer_size=1000000,
+    # Cloudflare specific settings
+    upgrade_timeout=120,
+    async_mode='threading'
 )
 
 # Load test configuration if exists
@@ -294,6 +305,53 @@ def check_for_new_ads():
         })
     else:
         print("No changes detected, no notification sent")
+
+# Add middleware for better Cloudflare compatibility
+@app.before_request
+def before_request():
+    """Handle Cloudflare-specific headers and optimizations"""
+    
+    # Handle Cloudflare's real IP headers
+    if 'CF-Connecting-IP' in request.headers:
+        # Use Cloudflare's real IP
+        request.environ['REMOTE_ADDR'] = request.headers['CF-Connecting-IP']
+    elif 'X-Forwarded-For' in request.headers:
+        # Fallback to X-Forwarded-For
+        request.environ['REMOTE_ADDR'] = request.headers['X-Forwarded-For'].split(',')[0].strip()
+    
+    # Set CORS headers for preflight requests
+    if request.method == 'OPTIONS':
+        response = make_response()
+        response.headers['Access-Control-Allow-Origin'] = request.headers.get('Origin', '*')
+        response.headers['Access-Control-Allow-Methods'] = 'GET, POST, PUT, DELETE, OPTIONS'
+        response.headers['Access-Control-Allow-Headers'] = 'Content-Type, Authorization'
+        response.headers['Access-Control-Max-Age'] = '86400'
+        return response
+
+@app.after_request
+def after_request(response):
+    """Add headers for better Cloudflare caching and performance"""
+    
+    # Don't cache Socket.IO requests
+    if request.path.startswith('/socket.io/'):
+        response.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, max-age=0'
+        response.headers['Pragma'] = 'no-cache'
+        response.headers['Expires'] = '0'
+    
+    # Cache static assets for 1 hour
+    elif request.path.startswith('/static/'):
+        response.headers['Cache-Control'] = 'public, max-age=3600'
+    
+    # Cache API responses for 30 seconds
+    elif request.path.startswith('/api/'):
+        response.headers['Cache-Control'] = 'public, max-age=30'
+    
+    # Add security headers
+    response.headers['X-Content-Type-Options'] = 'nosniff'
+    response.headers['X-Frame-Options'] = 'DENY'
+    response.headers['X-XSS-Protection'] = '1; mode=block'
+    
+    return response
 
 # Routes
 @app.route('/')
@@ -579,6 +637,14 @@ def health_check():
             "error": str(e),
             "timestamp": datetime.now().isoformat()
         }), 503
+
+@app.route('/test-socket')
+def test_socket():
+    """Serve Socket.IO test page for debugging Cloudflare connections"""
+    try:
+        return send_file('test_socket.html')
+    except Exception as e:
+        return f"Test page not found: {e}", 404
 
 if __name__ == '__main__':
     # Get port and host from environment variables (Coolify compatibility)
