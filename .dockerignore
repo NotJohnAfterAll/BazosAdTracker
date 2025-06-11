@@ -1,0 +1,83 @@
+# Git and development files
+.git
+.gitignore
+*.md
+README.md
+
+# Development scripts and configs
+start-dev.ps1
+start-https.ps1
+build-production.ps1
+migration-complete.ps1
+*.ps1
+
+# Node modules and build artifacts
+frontend/node_modules
+frontend/.nuxt
+frontend/.output
+frontend/.vite
+frontend/dist
+frontend/coverage
+
+# Python cache and virtual environments
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+.Python
+env
+venv
+ENV
+env.bak
+venv.bak
+.env
+
+# IDE and editor files
+.vscode
+.idea
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Log files
+*.log
+logs/
+data/scraper.log
+
+# Test files
+test_*.json
+tests/
+*_test.py
+
+# Certificate files (will be generated in container)
+certs/
+frontend/certs/
+*.pem
+*.crt
+*.key
+
+# Temporary files
+tmp/
+temp/
+.tmp
+.temp
+
+# Coverage reports
+htmlcov/
+.coverage
+.coverage.*
+coverage.xml
+
+# Backup files
+*.bak
+*.backup
+*.old
+
+# Development database files (optional - comment out if you want to include them)
+# data/ads.json
+# data/keywords.json
+# data/stats.json

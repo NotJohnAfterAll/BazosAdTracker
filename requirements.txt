@@ -1,5 +1,6 @@
 # Application dependencies for BazosChecker
 flask
+flask-cors
 requests
 beautifulsoup4
 python-dotenv
@@ -12,3 +13,5 @@ python-engineio
 Werkzeug
 # Server
 gunicorn
+# HTTPS support
+pyOpenSSL

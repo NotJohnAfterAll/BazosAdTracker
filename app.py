@@ -11,12 +11,14 @@ Features:
 """
 
 import os
+import sys
 import json
 import time
 import logging
 from datetime import datetime
-from flask import Flask, render_template, jsonify, request
+from flask import Flask, jsonify, request, send_from_directory, send_file
 from flask_socketio import SocketIO
+from flask_cors import CORS
 from apscheduler.schedulers.background import BackgroundScheduler
 from dotenv import load_dotenv
 from app.utils.bazos_scraper_fixed import BazosScraper
@@ -34,11 +36,20 @@ logger = logging.getLogger(__name__)
 # Load environment variables
 load_dotenv()
 
-app = Flask(__name__, 
-              template_folder='app/templates',
-              static_folder='app/static')
+app = Flask(__name__)
 app.config['SECRET_KEY'] = os.getenv('SECRET_KEY', 'default-secret-key')
-socketio = SocketIO(app)
+
+# Enable CORS for the Vue.js frontend
+# In production, CORS is handled by reverse proxy, but allow for development
+is_production = os.getenv('FLASK_ENV', 'development') == 'production'
+cors_origins = ['*'] if is_production else [
+    'http://localhost:3000', 'https://localhost:3000', 
+    'http://localhost:3001', 'https://localhost:3001',
+    'http://127.0.0.1:3000', 'https://127.0.0.1:3000'
+]
+
+CORS(app, origins=cors_origins)
+socketio = SocketIO(app, cors_allowed_origins=cors_origins)
 
 # Load test configuration if exists
 def load_test_config():
@@ -271,9 +282,57 @@ def check_for_new_ads():
 # Routes
 @app.route('/')
 def index():
-    # Always load fresh keywords to ensure consistency
-    current_keywords = load_keywords()
-    return render_template('index.html', keywords=current_keywords)
+    """Serve the Vue.js frontend"""
+    try:
+        return send_file('frontend/dist/index.html')
+    except:
+        # Fallback to API info if frontend not available
+        return jsonify({
+            "message": "Bazos Ad Tracker API",
+            "version": "2.0",
+            "frontend": "Vue.js frontend not found - run 'npm run build' in frontend/",
+            "endpoints": {
+                "health": "/api/health",
+                "keywords": "/api/keywords",
+                "recent_ads": "/api/recent-ads",
+                "stats": "/api/stats",
+                "manual_check": "/api/manual-check",
+                "notifications": "/api/notifications",
+                "api_info": "/api/info"
+            }
+        })
+
+@app.route('/api/info')
+def api_info():
+    """API endpoint documentation"""
+    return jsonify({
+        "message": "Bazos Ad Tracker API",
+        "version": "2.0",
+        "frontend": "Vue.js (served at /)",
+        "endpoints": {
+            "health": "/api/health",
+            "keywords": "/api/keywords",
+            "recent_ads": "/api/recent-ads",
+            "stats": "/api/stats",
+            "manual_check": "/api/manual-check",
+            "notifications": "/api/notifications"
+        },
+        "websocket": "Socket.IO supported",
+        "documentation": "See README.md for setup instructions"
+    })
+
+@app.route('/assets/<path:filename>')
+def serve_assets(filename):
+    """Serve Vue.js static assets"""
+    return send_from_directory('frontend/dist/assets', filename)
+
+@app.route('/favicon.ico')
+def favicon():
+    """Serve favicon"""
+    try:
+        return send_from_directory('frontend/dist', 'favicon.ico')
+    except:
+        return send_from_directory('frontend/public', 'favicon.png')
 
 @app.route('/api/keywords', methods=['GET', 'POST'])
 def manage_keywords():
@@ -448,20 +507,107 @@ def recalculate_stats():
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
 
-if __name__ == '__main__':
-    # Schedule the ad checking job
-    check_interval = int(os.getenv('CHECK_INTERVAL', 300))
+@app.route('/api/notifications')
+def get_notifications():
+    """Get pending notifications from scheduler"""
+    notifications_file = 'data/notifications.json'
     
-    # Only start scheduler in the main process (not in Flask's reloader subprocess)
-    if not app.debug or os.environ.get('WERKZEUG_RUN_MAIN') == 'true':
-        print(f"Starting scheduler with {check_interval} second intervals...")
-        scheduler.add_job(check_for_new_ads, 'interval', seconds=check_interval, id='check_ads')
-        scheduler.start()
-        print("Scheduler started successfully!")
+    if os.path.exists(notifications_file):
+        try:
+            with open(notifications_file, 'r', encoding='utf-8') as f:
+                notification = json.load(f)
+            
+            # Delete the notification file after reading
+            os.remove(notifications_file)
+            
+            return jsonify(notification)
+        except Exception as e:
+            logger.error(f"Error reading notifications: {e}")
+            return jsonify({'error': 'Failed to read notifications'}), 500
+    
+    return jsonify({'new_ads': [], 'deleted_ads': [], 'keywords_with_changes': []})
+
+@app.route('/api/health')
+def health_check():
+    """Health check endpoint for container orchestration (Coolify, Docker, etc.)"""
+    try:
+        # Basic health checks
+        health_status = {
+            "status": "healthy",
+            "timestamp": datetime.now().isoformat(),
+            "version": "2.0.0",
+            "services": {
+                "database": "ok",
+                "scraper": "ok",
+                "scheduler": "ok" if scheduler.running else "stopped"
+            },
+            "stats": {
+                "keywords_count": len(keywords),
+                "total_ads": sum(len(ads) for ads in all_ads.values()),
+                "uptime": stats.get_stats().get('system', {}).get('uptime_seconds', 0)
+            }
+        }
+        
+        # Check if critical services are working
+        if not os.path.exists(KEYWORDS_FILE):
+            health_status["services"]["database"] = "warning"
+        
+        if not scheduler.running:
+            health_status["status"] = "degraded"
+            
+        return jsonify(health_status), 200
+        
+    except Exception as e:
+        return jsonify({
+            "status": "unhealthy",
+            "error": str(e),
+            "timestamp": datetime.now().isoformat()
+        }), 503
+
+if __name__ == '__main__':
+    # Get port and host from environment variables (Coolify compatibility)
+    port = int(os.getenv('PORT', 5000))
+    host = os.getenv('HOST', '0.0.0.0')
+    
+    # Check if we're running in production (with Gunicorn) or development
+    is_production = os.getenv('FLASK_ENV', 'development') == 'production'
+    is_gunicorn = 'gunicorn' in os.environ.get('SERVER_SOFTWARE', '')
+    
+    print(f"🚀 Starting Bazos Ad Tracker...")
+    print(f"   Environment: {'Production' if is_production else 'Development'}")
+    print(f"   Server: {'Gunicorn' if is_gunicorn else 'Flask Dev Server'}")
+    print(f"   Host: {host}:{port}")
+    
+    # Only start scheduler in development mode or when explicitly enabled
+    if not is_production and not is_gunicorn:
+        # Development mode - use APScheduler
+        check_interval = int(os.getenv('CHECK_INTERVAL', 300))
+          # Only start scheduler in the main process (not in Flask's reloader subprocess)
+        if not app.debug or os.environ.get('WERKZEUG_RUN_MAIN') == 'true':
+            print(f"📅 Starting scheduler with {check_interval} second intervals...")
+            scheduler.add_job(check_for_new_ads, 'interval', seconds=check_interval, id='check_ads')
+            scheduler.start()
+            print("✅ Scheduler started successfully!")
+    else:
+        print("🏭 Production mode: Scheduler should be running as separate process")
+        print("   Start scheduler with: python scheduler.py")
+    
+    print(f"🌐 Starting Flask app on http://{host}:{port}")
+    print("   HTTPS handled by reverse proxy (Cloudflare/Coolify)")
+    
+    # Production vs Development mode
+    debug_mode = not is_production and os.getenv('FLASK_DEBUG', 'true').lower() == 'true'
     
     try:
-        print("Starting Flask app on http://localhost:5000")
-        socketio.run(app, debug=True, host='0.0.0.0', port=5000)
+        socketio.run(
+            app, 
+            debug=debug_mode, 
+            host=host, 
+            port=port,
+            # Additional production settings
+            use_reloader=not is_production,
+            log_output=not is_production
+        )
     except (KeyboardInterrupt, SystemExit):
         if scheduler.running:
             scheduler.shutdown()
