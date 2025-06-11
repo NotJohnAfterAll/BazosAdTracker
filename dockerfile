@@ -1,6 +1,6 @@
 # Multi-stage build for production deployment
 # Stage 1: Build frontend
-FROM node:18-alp    --keepalive ${GUNICORN_KEEPALIVE:-60} \\\n\ne AS frontend-builder
+FROM node:18-alp AS frontend-builder
 
 WORKDIR /app/frontend
 
