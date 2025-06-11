@@ -631,20 +631,11 @@ def health_check():
             
         return jsonify(health_status), 200
         
-    except Exception as e:
-        return jsonify({
+    except Exception as e:        return jsonify({
             "status": "unhealthy",
             "error": str(e),
             "timestamp": datetime.now().isoformat()
         }), 503
-
-@app.route('/test-socket')
-def test_socket():
-    """Serve Socket.IO test page for debugging Cloudflare connections"""
-    try:
-        return send_file('test_socket.html')
-    except Exception as e:
-        return f"Test page not found: {e}", 404
 
 if __name__ == '__main__':
     # Get port and host from environment variables (Coolify compatibility)
@@ -676,20 +667,32 @@ if __name__ == '__main__':
     
     print(f"🌐 Starting Flask app on http://{host}:{port}")
     print("   HTTPS handled by reverse proxy (Cloudflare/Coolify)")
-    
-    # Production vs Development mode
+      # Production vs Development mode
     debug_mode = not is_production and os.getenv('FLASK_DEBUG', 'true').lower() == 'true'
     
     try:
-        socketio.run(
-            app, 
-            debug=debug_mode, 
-            host=host, 
-            port=port,
-            # Additional production settings
-            use_reloader=not is_production,
-            log_output=not is_production
-        )
+        if is_production:
+            # Production mode - allow unsafe Werkzeug or use app directly
+            print("⚠️  Running with Werkzeug in production (use Gunicorn for better performance)")
+            socketio.run(
+                app, 
+                debug=False, 
+                host=host, 
+                port=port,
+                use_reloader=False,
+                log_output=False,
+                allow_unsafe_werkzeug=True  # Allow Werkzeug in production
+            )
+        else:
+            # Development mode
+            socketio.run(
+                app, 
+                debug=debug_mode, 
+                host=host, 
+                port=port,
+                use_reloader=True,
+                log_output=True
+            )
     except (KeyboardInterrupt, SystemExit):
         if scheduler.running:
             scheduler.shutdown()
