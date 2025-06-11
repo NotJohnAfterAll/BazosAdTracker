@@ -33,7 +33,7 @@ WORKDIR /app
 # Install system dependencies
 RUN apt-get update && apt-get install -y \
     curl \
-    && apt-get install wget
+    && apt-get install wget \
     && rm -rf /var/lib/apt/lists/* \
     && apt-get clean
 
