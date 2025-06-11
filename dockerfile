@@ -33,6 +33,7 @@ WORKDIR /app
 # Install system dependencies
 RUN apt-get update && apt-get install -y \
     curl \
+    && apt-get install wget
     && rm -rf /var/lib/apt/lists/* \
     && apt-get clean
 
@@ -87,7 +88,7 @@ exec gunicorn \\\n\
     --bind ${HOST:-0.0.0.0}:${PORT:-5000} \\\n\
     --workers ${GUNICORN_WORKERS:-2} \\\n\
     --timeout ${GUNICORN_TIMEOUT:-120} \\\n\
-    --keepalive ${GUNICORN_KEEPALIVE:-60} \\\n\
+    --keep-alive ${GUNICORN_KEEPALIVE:-60} \\\n\
     --max-requests ${GUNICORN_MAX_REQUESTS:-1000} \\\n\
     --max-requests-jitter 100 \\\n\
     --preload \\\n\
