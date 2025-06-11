@@ -20,4 +20,4 @@ COPY . .
 EXPOSE 5500
 
 # Start using Gunicorn (better than Flask's dev server)
-CMD ["gunicorn", "-b", "0.0.0.0:5500", "app:app"]
+CMD ["python", "app.py"]
