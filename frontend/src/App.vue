@@ -183,21 +183,50 @@ const initSocket = () => {
           : 'http://localhost:5000')
   )
   
+  console.log('🔍 Socket.IO connecting to:', socketUrl)
+  
   socket.value = io(socketUrl, {
-    transports: ['websocket', 'polling'],
-    // Enable secure connection for HTTPS
+    // Cloudflare WebSocket configuration
+    transports: ['polling', 'websocket'], // Start with polling, upgrade to websocket
+    upgrade: true,
+    rememberUpgrade: true,
+    timeout: 20000,
+    forceNew: true,
+    // Cloudflare-friendly options
+    pingTimeout: 60000,
+    pingInterval: 25000,
+    // Retry configuration
+    reconnection: true,
+    reconnectionAttempts: 5,
+    reconnectionDelay: 1000,
+    reconnectionDelayMax: 5000,
+    maxReconnectionAttempts: 5,
+    // Path configuration
+    path: '/socket.io/',
+    // Security
     secure: window.location.protocol === 'https:',
-    // Allow self-signed certificates in development only
     rejectUnauthorized: import.meta.env.PROD
   })
+  
   socket.value.on('connect', () => {
+    console.log('✅ Socket connected via:', socket.value?.io?.engine?.transport?.name)
     showStatus('Connected to server', 'success')
     stopNotificationPolling() // Stop polling when socket connects
   })
 
   socket.value.on('disconnect', () => {
+    console.log('❌ Socket disconnected')
     showStatus('Disconnected from server', 'error')
     startNotificationPolling() // Start polling when socket disconnects
+  })
+  
+  // Log when transport upgrades
+  socket.value.io?.engine?.on('upgrade', () => {
+    console.log('🔄 Transport upgraded to:', socket.value?.io?.engine?.transport?.name)
+  })
+  
+  socket.value.io?.engine?.on('upgradeError', (error: any) => {
+    console.log('⚠️ Transport upgrade failed:', error)
   })
 
   socket.value.on('ads_update', (data: any) => {

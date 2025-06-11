@@ -49,7 +49,23 @@ cors_origins = ['*'] if is_production else [
 ]
 
 CORS(app, origins=cors_origins)
-socketio = SocketIO(app, cors_allowed_origins=cors_origins)
+
+# Configure Socket.IO for Cloudflare compatibility
+socketio = SocketIO(
+    app, 
+    cors_allowed_origins=cors_origins,
+    # Cloudflare WebSocket configuration
+    transports=['polling', 'websocket'],  # Allow both transports, start with polling
+    ping_timeout=60,
+    ping_interval=25,
+    # Additional settings for better Cloudflare compatibility
+    logger=False,  # Disable logging for production
+    engineio_logger=False,
+    allow_upgrades=True,
+    http_compression=True,
+    # Handle connection timeouts better
+    max_http_buffer_size=1000000
+)
 
 # Load test configuration if exists
 def load_test_config():
