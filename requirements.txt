@@ -11,7 +11,5 @@ lxml
 eventlet
 python-engineio
 Werkzeug
-# Server
-gunicorn
-# HTTPS support
+# HTTPS support (optional)
 pyOpenSSL

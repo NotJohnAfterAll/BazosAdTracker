@@ -66,7 +66,7 @@ The app uses a **dual-process architecture** for production:
 - Handles HTTP requests and WebSocket connections
 - Serves the Vue.js frontend
 - Provides API endpoints
-- Runs on Gunicorn with multiple workers
+- Runs on Flask development server (production-ready for small to medium loads)
 
 ### **Scheduler Process** 
 - Runs independently as background service
@@ -146,7 +146,7 @@ The Vue.js frontend automatically detects:
 - Check container logs for file permission issues
 
 **4. High memory usage:**
-- Reduce GUNICORN_WORKERS to 1-2
+- Monitor Flask server performance
 - Lower CHECK_INTERVAL if needed
 - Monitor resource usage in Coolify
 

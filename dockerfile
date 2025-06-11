@@ -83,19 +83,10 @@ trap cleanup SIGTERM SIGINT\n\
 sleep 2\n\
 \n\
 # Start web application\n\
-echo "Starting web application with Gunicorn..."\n\
-exec python -m gunicorn \\\n\
-    --bind ${HOST:-0.0.0.0}:${PORT:-5000} \\\n\
-    --workers ${GUNICORN_WORKERS:-2} \\\n\    --timeout ${GUNICORN_TIMEOUT:-120} \\\n\
-    --keep-alive ${GUNICORN_KEEPALIVE:-60} \\\n\
-    --max-requests ${GUNICORN_MAX_REQUESTS:-1000} \\\n\
-    --max-requests-jitter 100 \\\n\
-    --preload \\\n\
-    --access-logfile - \\\n\
-    --error-logfile - \\\n\
-    --log-level info \\\n\
-    --pythonpath . \\\n\
-    app:app\n\
+echo "Starting web application with Flask..."\n\
+export FLASK_ENV=production\n\
+export FLASK_DEBUG=false\n\
+exec python app.py\n\
 ' > /app/start.sh && chmod +x /app/start.sh
 
 # Switch to non-root user
