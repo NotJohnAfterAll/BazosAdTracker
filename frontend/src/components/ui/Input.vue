@@ -9,7 +9,7 @@
 </template>
 
 <script setup lang="ts">
-import { cn } from '../../lib/utils.js'
+import { cn } from '../../lib/utils.ts'
 
 interface Props {
   class?: string
