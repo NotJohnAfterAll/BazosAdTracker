@@ -30,7 +30,7 @@ FLASK_DEBUG=false
 
 # Application
 CHECK_INTERVAL=300
-FLASK_HTTPS=true
+FLASK_HTTPS=false
 
 # Performance (optional)
 GUNICORN_WORKERS=2
