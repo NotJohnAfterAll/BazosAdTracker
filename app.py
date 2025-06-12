@@ -158,9 +158,20 @@ def save_ads(ads):
     with open(ADS_FILE, 'w', encoding='utf-8') as f:
         json.dump(ads, f, ensure_ascii=False)
 
-# Initialize data
+# Initialize data with debugging
+print("Loading data from files...")
 keywords = load_keywords()
 all_ads = load_ads()
+
+print(f"Loaded {len(keywords)} keywords: {keywords}")
+print(f"Loaded {len(all_ads)} keyword groups for ads")
+if all_ads:
+    total_ads = sum(len(ad_list) for ad_list in all_ads.values())
+    print(f"Total ads loaded: {total_ads}")
+    print(f"Keyword groups: {list(all_ads.keys())}")
+else:
+    print("WARNING: No ads loaded from file!")
+print("Data loading complete.")
 
 # Check for new advertisements
 def check_for_new_ads():
@@ -496,10 +507,21 @@ def manage_keywords():
         except Exception as e:
             print(f"❌ Unexpected error in manage_keywords: {e}")
             logger.error(f"Unexpected error in manage_keywords: {e}")
-            return jsonify({'success': False, 'error': f'Server error: {str(e)}'})
+            return jsonify({'success': False, 'error': f'Server error: {str(e)}'})    # GET request - return keywords
+    print(f"API /keywords GET called, returning {len(keywords)} keywords: {keywords}")
     
-    # GET request - return keywords
-    return jsonify({'keywords': keywords})
+    if not keywords:
+        print("WARNING: keywords is empty, trying to reload from file")
+        keywords = load_keywords()
+        print(f"Reloaded {len(keywords)} keywords: {keywords}")
+        print(f"Reloaded {len(keywords)} keywords: {keywords}")
+    
+    response = jsonify({'keywords': keywords})
+    # Disable caching for dynamic data
+    response.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
+    response.headers['Pragma'] = 'no-cache'
+    response.headers['Expires'] = '0'
+    return response
 
 @app.route('/api/keywords/<keyword>', methods=['DELETE'])
 def delete_keyword(keyword):
@@ -527,11 +549,19 @@ def delete_keyword(keyword):
 
 @app.route('/api/ads')
 def get_ads():
+    global all_ads
     keyword = request.args.get('keyword')
+    print(f"API /ads called with keyword='{keyword}', all_ads has {len(all_ads)} keyword groups")
+    
+    if not all_ads:
+        print("WARNING: all_ads is empty, trying to reload from file")
+        all_ads = load_ads()
+        print(f"Reloaded {len(all_ads)} keyword groups")
     
     if keyword and keyword in all_ads:
         # Get ads for a specific keyword
         ads_to_return = all_ads[keyword]
+        print(f"Returning {len(ads_to_return)} ads for keyword '{keyword}'")
         
         # Check for ads with default/placeholder titles and try to get more details
         for ad in ads_to_return:
@@ -550,14 +580,24 @@ def get_ads():
         return jsonify({'ads': ads_to_return})
     
     # Return all ads
+    print(f"Returning all ads: {len(all_ads)} keyword groups")
     return jsonify({'ads': all_ads})
 
 @app.route('/api/recent-ads')
 def get_recent_ads():
+    global all_ads
+    print(f"API /recent-ads called. all_ads has {len(all_ads)} keyword groups")
+    
     all_recent_ads = []
     seen_ad_ids = set()  # Track ad IDs to prevent duplicates
     
+    if not all_ads:
+        print("WARNING: all_ads is empty, trying to reload from file")
+        all_ads = load_ads()
+        print(f"Reloaded {len(all_ads)} keyword groups")
+    
     for keyword, ads in all_ads.items():
+        print(f"Processing keyword '{keyword}' with {len(ads)} ads")
         for ad in ads[:5]:  # Get 5 most recent ads per keyword
             # Clean up the ad data if needed
             if 'title' in ad and (not ad['title'] or ad['title'] == "Bazos.cz Advertisement"):
@@ -578,7 +618,11 @@ def get_recent_ads():
                 all_recent_ads.append({
                     'keyword': keyword,
                     'ad': ad
-                })    # Sort by date_added (actual ad posting date) if available, otherwise fall back to scraped_at
+                })    
+    
+    print(f"API /recent-ads returning {len(all_recent_ads)} ads")
+    
+    # Sort by date_added (actual ad posting date) if available, otherwise fall back to scraped_at
     def get_sort_key(item):
         ad = item['ad']
         
@@ -706,6 +750,53 @@ def health_check():
             "error": str(e),
             "timestamp": datetime.now().isoformat()
         }), 503
+
+@app.route('/api/debug')
+def debug_api():
+    """Debug endpoint to help diagnose production issues"""
+    import sys
+    debug_info = {
+        "timestamp": datetime.now().isoformat(),
+        "environment": {
+            "python_version": sys.version,
+            "working_directory": os.getcwd(),
+            "flask_env": os.environ.get('FLASK_ENV', 'not set'),
+            "flask_debug": os.environ.get('FLASK_DEBUG', 'not set')
+        },
+        "file_system": {
+            "data_dir_exists": os.path.exists("data"),
+            "keywords_file_exists": os.path.exists("data/keywords.json"),
+            "ads_file_exists": os.path.exists("data/ads.json"), 
+            "stats_file_exists": os.path.exists("data/stats.json")
+        },
+        "data_status": {
+            "keywords_in_memory": len(keywords),
+            "keywords_list": keywords,
+            "ads_groups_in_memory": len(all_ads),
+            "ads_groups": list(all_ads.keys()),
+            "total_ads_in_memory": sum(len(ad_list) for ad_list in all_ads.values()) if all_ads else 0
+        }
+    }
+    
+    # Try to read files directly
+    try:
+        if os.path.exists("data/keywords.json"):
+            with open("data/keywords.json", 'r', encoding='utf-8-sig') as f:
+                file_keywords = json.load(f)
+                debug_info["file_status"] = {
+                    "keywords_from_file": file_keywords,
+                    "keywords_count": len(file_keywords)
+                }
+        
+        if os.path.exists("data/ads.json"):
+            with open("data/ads.json", 'r', encoding='utf-8-sig') as f:
+                file_ads = json.load(f)
+                debug_info["file_status"]["ads_from_file_count"] = sum(len(ad_list) for ad_list in file_ads.values()) if isinstance(file_ads, dict) else 0
+                debug_info["file_status"]["ads_groups_from_file"] = list(file_ads.keys()) if isinstance(file_ads, dict) else "invalid format"
+    except Exception as e:
+        debug_info["file_read_error"] = str(e)
+    
+    return jsonify(debug_info)
 
 if __name__ == '__main__':
     # Get port and host from environment variables (Coolify compatibility)
