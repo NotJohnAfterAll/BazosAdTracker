@@ -62,9 +62,19 @@ const emit = defineEmits<{
 const newKeyword = ref('')
 
 const handleAddKeyword = () => {
+  console.log('🔥 KeywordManager: handleAddKeyword called')
+  console.log('🔥 KeywordManager: newKeyword.value =', `"${newKeyword.value}"`)
+  console.log('🔥 KeywordManager: newKeyword.value.trim() =', `"${newKeyword.value.trim()}"`)
+  console.log('🔥 KeywordManager: newKeyword.value.length =', newKeyword.value.length)
+  
   if (newKeyword.value.trim()) {
+    console.log('🔥 KeywordManager: Emitting add-keyword event with:', newKeyword.value.trim())
     emit('add-keyword', newKeyword.value.trim())
     newKeyword.value = ''
+    console.log('🔥 KeywordManager: Event emitted and input cleared')
+  } else {
+    console.log('❌ KeywordManager: Empty keyword, not emitting')
+    alert('⚠️ The keyword input appears to be empty. Please check if you typed something.')
   }
 }
 </script>

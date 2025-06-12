@@ -164,7 +164,7 @@ const soundEnabled = ref(localStorage.getItem('soundEnabled') !== 'false')
 const isDarkMode = ref(localStorage.getItem('darkMode') === 'true')
 
 // API Base URL
-const API_BASE = import.meta.env.VITE_API_URL || '/api'
+const API_BASE = (import.meta as any).env.VITE_API_URL || '/api'
 
 // Initialize theme
 if (isDarkMode.value) {
@@ -172,11 +172,10 @@ if (isDarkMode.value) {
 }
 
 // Socket.IO setup
-const initSocket = () => {
-  // Use environment variable or detect from current location
-  const socketUrl = import.meta.env.VITE_SOCKET_URL || (
+const initSocket = () => {  // Use environment variable or detect from current location
+  const socketUrl = (import.meta as any).env.VITE_SOCKET_URL || (
     // In production, use same origin (works with reverse proxy)
-    import.meta.env.PROD 
+    (import.meta as any).env.PROD 
       ? window.location.origin
       : (window.location.protocol === 'https:' 
           ? 'https://localhost:5000' 
@@ -184,27 +183,21 @@ const initSocket = () => {
   )
   
   console.log('🔍 Socket.IO connecting to:', socketUrl)
-    socket.value = io(socketUrl, {
-    // Cloudflare WebSocket configuration - start with polling only
+    socket.value = io(socketUrl, {    // Cloudflare WebSocket configuration - start with polling only
     transports: ['polling'], // Use polling only, disable websockets for Cloudflare compatibility
     upgrade: false, // Don't upgrade to websockets automatically
     rememberUpgrade: false,
     timeout: 30000, // Increased timeout for Cloudflare
     forceNew: true,
-    // Cloudflare-friendly options
-    pingTimeout: 120000, // Increased for Cloudflare
-    pingInterval: 60000, // Increased for Cloudflare
     // Retry configuration
     reconnection: true,
     reconnectionAttempts: 10, // More attempts for Cloudflare
     reconnectionDelay: 2000,
     reconnectionDelayMax: 10000,
-    maxReconnectionAttempts: 10,
     // Path configuration
-    path: '/socket.io/',
-    // Security
+    path: '/socket.io/',    // Security
     secure: window.location.protocol === 'https:',
-    rejectUnauthorized: import.meta.env.PROD,
+    rejectUnauthorized: (import.meta as any).env.PROD,
     // Additional Cloudflare settings
     autoConnect: true,
     withCredentials: false
@@ -490,7 +483,7 @@ onUnmounted(() => {
 })
 
 // Notification polling for production (when scheduler runs separately)
-let notificationPollingInterval: number | null = null
+let notificationPollingInterval: ReturnType<typeof setInterval> | null = null
 
 const startNotificationPolling = () => {
   // Poll for notifications every 30 seconds in production

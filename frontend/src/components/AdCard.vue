@@ -1,10 +1,7 @@
 <template>  <Card 
-    :class="[
-      'ad-card-transition overflow-hidden flex flex-col h-full',
-      ad.isNew ? 'notification-badge ring-2 ring-primary' : ''
-    ]"
-  ><!-- Image -->
-    <div class="h-60 bg-muted relative overflow-hidden">
+    :class="'ad-card-transition overflow-hidden flex flex-col h-full' + (ad.isNew ? ' notification-badge ring-2 ring-primary' : '')"
+  >    <!-- Image -->
+    <div class="h-40 bg-muted relative overflow-hidden">
       <img
         v-if="imageUrl && imageUrl !== 'N/A' && imageUrl !== '' && !imageError"
         :src="imageUrl"
@@ -21,7 +18,7 @@
         NEW
       </div>
     </div>    <!-- Content -->
-    <div class="p-4 flex flex-col h-full">      <div class="flex justify-between items-start mb-2">
+    <div class="p-4 flex flex-col flex-grow"><div class="flex justify-between items-start mb-2">
         <h3 class="font-semibold text-sm line-clamp-2 flex-1">{{ displayTitle }}</h3>
         <button
           @click="$emit('favorite')"
@@ -36,14 +33,11 @@
       
       <div class="text-xs text-muted-foreground mb-2">
         <div>{{ formatDate(ad.date_added) }}</div>
-      </div>
-      
-      <p class="text-sm text-muted-foreground mb-3 line-clamp-3 flex-grow">
-        {{ ad.description || 'No description available' }}
+      </div>        <p class="text-sm text-muted-foreground mb-2 line-clamp-3 h-16">
+        {{ truncatedDescription }}
       </p>
-      
       <!-- Keyword badge under description -->
-      <div v-if="keyword" class="mb-3">
+      <div v-if="keyword" class="mb-2">
         <span class="inline-flex items-center px-2 py-1 rounded text-xs bg-muted text-muted-foreground border font-medium">
           {{ keyword }}
         </span>
@@ -106,18 +100,29 @@ const displayTitle = computed(() => {
   return props.ad.title
 })
 
+const truncatedDescription = computed(() => {
+  const description = props.ad.description || 'No description available'
+  // Limit to approximately 150 characters (roughly 3 lines)
+  const maxLength = 150
+  
+  if (description.length <= maxLength) {
+    return description
+  }
+  
+  // Find the last space before the limit to avoid cutting words
+  const truncated = description.substring(0, maxLength)
+  const lastSpace = truncated.lastIndexOf(' ')
+  
+  if (lastSpace > maxLength * 0.8) { // Only use space if it's not too far back
+    return truncated.substring(0, lastSpace) + '...'
+  }
+  
+  return truncated + '...'
+})
+
 const imageUrl = computed(() => {
   // Prefer image_url over image field
   return props.ad.image_url || props.ad.image
-})
-
-const cleanSellerName = computed(() => {
-  if (!props.ad.seller_name || props.ad.seller_name === 'N/A') {
-    return 'Unknown seller'
-  }
-  
-  // Remove "... bazar pro každého" text
-  return props.ad.seller_name.replace(/\.\.\.\s*bazar\s+pro\s+každého/i, '').trim() || 'Unknown seller'
 })
 
 const formatDate = (dateStr: string) => {
@@ -143,7 +148,7 @@ const formatDate = (dateStr: string) => {
   }
 }
 
-const handleImageError = (event: Event) => {
+const handleImageError = () => {
   imageError.value = true
   console.log('Image failed to load:', imageUrl.value)
 }
@@ -155,6 +160,7 @@ const handleImageError = (event: Event) => {
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
+  line-clamp: 2;
 }
 
 .line-clamp-3 {
@@ -162,5 +168,21 @@ const handleImageError = (event: Event) => {
   -webkit-line-clamp: 3;
   -webkit-box-orient: vertical;
   overflow: hidden;
+  line-clamp: 3;
+  height: 4rem; /* Fixed height for exactly 3 lines (64px) */
+  line-height: 1.33rem; /* Approximately 21.33px per line for text-sm */
+}
+
+.line-clamp-4 {
+  display: -webkit-box;
+  -webkit-line-clamp: 4;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  line-clamp: 4;
+}
+
+.ad-card-transition {
+  min-height: 400px; /* Restore taller minimum height */
+  max-height: 480px; /* Restore taller maximum height */
 }
 </style>

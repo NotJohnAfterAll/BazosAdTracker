@@ -87,3 +87,6 @@ notifications.json
 .coverage
 htmlcov/
 .pytest_cache/
+
+utils/__pycache__
+app/__pycache__/

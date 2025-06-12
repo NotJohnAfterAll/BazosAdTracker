@@ -45,7 +45,9 @@ is_production = os.getenv('FLASK_ENV', 'development') == 'production'
 cors_origins = ['*'] if is_production else [
     'http://localhost:3000', 'https://localhost:3000', 
     'http://localhost:3001', 'https://localhost:3001',
-    'http://127.0.0.1:3000', 'https://127.0.0.1:3000'
+    'http://localhost:5000', 'https://localhost:5000',
+    'http://127.0.0.1:3000', 'https://127.0.0.1:3000',
+    'http://127.0.0.1:5000', 'https://127.0.0.1:5000'
 ]
 
 # Add your Cloudflare domain to CORS origins in production
@@ -342,7 +344,15 @@ def after_request(response):
     elif request.path.startswith('/static/'):
         response.headers['Cache-Control'] = 'public, max-age=3600'
     
-    # Cache API responses for 30 seconds
+    # Don't cache dynamic API responses that need real-time updates
+    elif request.path.startswith('/api/') and request.path in [
+        '/api/recent-ads', '/api/ads', '/api/notifications', '/api/stats'
+    ]:
+        response.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, max-age=0'
+        response.headers['Pragma'] = 'no-cache'
+        response.headers['Expires'] = '0'
+    
+    # Cache other API responses for 30 seconds (like /api/keywords, /api/info)
     elif request.path.startswith('/api/'):
         response.headers['Cache-Control'] = 'public, max-age=30'
     
@@ -408,27 +418,87 @@ def favicon():
     except:
         return send_from_directory('frontend/public', 'favicon.png')
 
+@app.route('/notification.mp3')
+def notification_sound():
+    """Serve notification audio file"""
+    try:
+        return send_from_directory('frontend/public', 'notification.mp3')
+    except:
+        # Fallback to silence if file not found
+        return '', 404
+
 @app.route('/api/keywords', methods=['GET', 'POST'])
 def manage_keywords():
     global keywords
     
     if request.method == 'POST':
-        data = request.json
-        new_keyword = data.get('keyword')
-        
-        if new_keyword and new_keyword not in keywords:
-            keywords.append(new_keyword)
-            save_keywords(keywords)
+        try:
+            data = request.json
+            print(f"🔥 POST /api/keywords - Received data: {data}")
             
-            # Get initial ads for this keyword
-            initial_ads = scraper.search(new_keyword)
-            all_ads[new_keyword] = initial_ads
-            save_ads(all_ads)
+            if not data:
+                print("❌ No JSON data received")
+                return jsonify({'success': False, 'error': 'No data provided'})
             
-            return jsonify({'success': True, 'keywords': keywords})
-        
-        return jsonify({'success': False, 'error': 'Invalid or duplicate keyword'})
+            new_keyword = data.get('keyword')
+            print(f"🔥 Extracted keyword: '{new_keyword}'")
+            
+            if not new_keyword:
+                print("❌ Empty keyword")
+                return jsonify({'success': False, 'error': 'Please enter a keyword'})
+            
+            new_keyword = new_keyword.strip()
+            if not new_keyword:
+                print("❌ Keyword is empty after strip")
+                return jsonify({'success': False, 'error': 'Please enter a keyword'})
+            
+            if new_keyword in keywords:
+                print(f"❌ Keyword '{new_keyword}' already exists")
+                return jsonify({'success': False, 'error': 'This keyword is already being tracked'})
+            
+            print(f"✅ Adding keyword: '{new_keyword}'")
+            
+            try:
+                # Add keyword first
+                keywords.append(new_keyword)
+                save_keywords(keywords)
+                print(f"✅ Keyword '{new_keyword}' saved to file")
+                
+                # Try to get initial ads for this keyword (with error handling)
+                try:
+                    print(f"🔍 Attempting to fetch initial ads for keyword: {new_keyword}")
+                    initial_ads = scraper.search(new_keyword)
+                    all_ads[new_keyword] = initial_ads
+                    save_ads(all_ads)
+                    print(f"✅ Successfully fetched {len(initial_ads)} initial ads for '{new_keyword}'")
+                except Exception as scraper_error:
+                    # If scraping fails, still add the keyword but with empty ads list
+                    print(f"⚠️ Failed to fetch initial ads for '{new_keyword}': {scraper_error}")
+                    logger.error(f"Failed to fetch initial ads for '{new_keyword}': {scraper_error}")
+                    all_ads[new_keyword] = []
+                    save_ads(all_ads)
+                
+                return jsonify({
+                    'success': True, 
+                    'keywords': keywords,
+                    'message': f"Keyword '{new_keyword}' added successfully. Initial ads will be loaded on next check."
+                })
+                
+            except Exception as save_error:
+                # If there's any error saving, remove the keyword from the list and report failure
+                if new_keyword in keywords:
+                    keywords.remove(new_keyword)
+                    save_keywords(keywords)
+                print(f"❌ Error adding keyword '{new_keyword}': {save_error}")
+                logger.error(f"Error adding keyword '{new_keyword}': {save_error}")
+                return jsonify({'success': False, 'error': f'Failed to add keyword: {str(save_error)}'})
+                
+        except Exception as e:
+            print(f"❌ Unexpected error in manage_keywords: {e}")
+            logger.error(f"Unexpected error in manage_keywords: {e}")
+            return jsonify({'success': False, 'error': f'Server error: {str(e)}'})
     
+    # GET request - return keywords
     return jsonify({'keywords': keywords})
 
 @app.route('/api/keywords/<keyword>', methods=['DELETE'])
