@@ -30,11 +30,10 @@ RUN groupadd -g 1001 appuser && \
 # Set work directory
 WORKDIR /app
 
-# Install system dependencies
+# Install system dependencies (removed supervisor for simplicity)
 RUN apt-get update && apt-get install -y \
     curl \
     wget \
-    supervisor \
     && rm -rf /var/lib/apt/lists/* \
     && apt-get clean
 
@@ -49,15 +48,9 @@ COPY . .
 COPY --from=frontend-builder /app/frontend/dist ./frontend/dist
 
 # Create necessary directories and set permissions
-RUN mkdir -p data logs && \
-    chown -R appuser:appuser /app
-
-# Copy supervisor configuration
-COPY supervisord.conf /etc/supervisor/conf.d/supervisord.conf
-
-# Create log directory for supervisor  
-RUN mkdir -p /var/log/supervisor && \
-    chown -R appuser:appuser /var/log/supervisor
+RUN mkdir -p data logs notifications && \
+    chown -R appuser:appuser /app && \
+    chmod +x start.sh
 
 # Switch to non-root user
 USER appuser
@@ -69,5 +62,5 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
 # Expose the port (Coolify will map this automatically)
 EXPOSE ${PORT:-5000}
 
-# Use supervisor to manage both Flask app and scheduler
-CMD ["/usr/bin/supervisord", "-c", "/etc/supervisor/conf.d/supervisord.conf"]
+# Use simple shell script to manage both processes
+CMD ["./start.sh"]
