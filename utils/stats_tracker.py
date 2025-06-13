@@ -55,6 +55,24 @@ class StatsTracker:
                 json.dump(self.stats, f, indent=2, ensure_ascii=False)
         except Exception as e:
             print(f"Error saving stats file: {e}")
+
+    def reload_stats_from_file(self):
+        """Force reload stats from file - important for multi-process environments"""
+        try:
+            if os.path.exists(self.stats_file):
+                with open(self.stats_file, "r", encoding="utf-8-sig") as f:
+                    file_stats = json.load(f)
+                
+                # Update memory stats with file data, preserving structure
+                self.stats.update(file_stats)
+                self._ensure_stats_structure()
+                return True
+            else:
+                print(f"Stats file {self.stats_file} does not exist")
+                return False
+        except Exception as e:
+            print(f"Error reloading stats from file: {e}")
+            return False
     
     def record_check(self, duration_ms):
         """Record a completed check for ads"""
@@ -133,10 +151,32 @@ class StatsTracker:
             self.save_stats()
         else:
             print(f"No stats found for keyword '{keyword}' to remove")
-    
+
     def get_stats(self):
-        """Get current stats"""
+        """Get current stats - always reload from file first for multi-process compatibility"""
+        # Force reload from file to get latest stats from other processes (e.g., scheduler)
+        self.reload_stats_from_file()
+        
         self.update_uptime()
+        
+        # Calculate unique ads count from current data
+        try:
+            ads_file = "data/ads.json"
+            if os.path.exists(ads_file):
+                with open(ads_file, "r", encoding="utf-8-sig") as f:
+                    current_ads = json.load(f)
+                
+                unique_ads = set()
+                for keyword, ads in current_ads.items():
+                    for ad in ads:
+                        if isinstance(ad, dict) and 'id' in ad:
+                            unique_ads.add(ad['id'])
+                
+                # Update the stats with real-time unique count
+                self.stats["ads"]["total_found"] = len(unique_ads)
+        except Exception as e:
+            print(f"Error calculating unique ads count: {e}")
+        
         return self.stats
     
     def reset_uptime(self):
@@ -169,16 +209,19 @@ class StatsTracker:
             print("=" * 50)
             print(f"Current keywords: {current_keywords}")
             print(f"Current ads data keys: {list(current_ads.keys())}")
-            
-            # Reset ad stats
-            total_found = 0
+              # Reset ad stats
+            unique_ads = set()  # Track unique ad IDs to avoid double counting
             new_by_keyword = {}
             
             # Calculate stats based on current actual data
             for keyword in current_keywords:
                 if keyword in current_ads:
                     ad_count = len(current_ads[keyword])
-                    total_found += ad_count
+                    
+                    # Add unique ad IDs to the set
+                    for ad in current_ads[keyword]:
+                        if isinstance(ad, dict) and 'id' in ad:
+                            unique_ads.add(ad['id'])
                     
                     new_by_keyword[keyword] = {
                         "found": ad_count,
@@ -195,12 +238,15 @@ class StatsTracker:
                     }
                     print(f"Keyword '{keyword}': 0 ads")
             
-            # Update stats with recalculated values
-            self.stats["ads"]["total_found"] = total_found
+            # Total unique ads count
+            total_unique_ads = len(unique_ads)
+            print(f"Total unique ads found: {total_unique_ads} (some ads may appear in multiple keywords)")
+              # Update stats with recalculated values
+            self.stats["ads"]["total_found"] = total_unique_ads
             self.stats["ads"]["total_deleted"] = 0  # Reset since we can't track historical deletions
             self.stats["ads"]["by_keyword"] = new_by_keyword
             
-            print(f"Stats recalculated - Total ads: {total_found}")
+            print(f"Stats recalculated - Total unique ads: {total_unique_ads}")
             print("=" * 50)
             
             self.save_stats()
