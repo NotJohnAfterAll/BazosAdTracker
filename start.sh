@@ -20,7 +20,7 @@ trap cleanup SIGTERM SIGINT
 
 # Start scheduler in background
 echo "📅 Starting scheduler..."
-python scheduler.py > logs/scheduler.log 2>&1 &
+python scheduler.py 2>&1 | tee logs/scheduler.log &
 SCHEDULER_PID=$!
 echo "Scheduler started with PID: $SCHEDULER_PID"
 
@@ -29,7 +29,7 @@ sleep 2
 
 # Start Flask app in background
 echo "🌐 Starting Flask app..."
-python app.py > logs/flask.log 2>&1 &
+python app.py 2>&1 | tee logs/flask.log &
 FLASK_PID=$!
 echo "Flask app started with PID: $FLASK_PID"
 
@@ -38,7 +38,7 @@ while true; do
     # Check if scheduler is still running
     if ! kill -0 $SCHEDULER_PID 2>/dev/null; then
         echo "⚠️ Scheduler crashed, restarting..."
-        python scheduler.py > logs/scheduler.log 2>&1 &
+        python scheduler.py 2>&1 | tee logs/scheduler.log &
         SCHEDULER_PID=$!
         echo "Scheduler restarted with PID: $SCHEDULER_PID"
     fi
@@ -46,7 +46,7 @@ while true; do
     # Check if Flask app is still running
     if ! kill -0 $FLASK_PID 2>/dev/null; then
         echo "⚠️ Flask app crashed, restarting..."
-        python app.py > logs/flask.log 2>&1 &
+        python app.py 2>&1 | tee logs/flask.log &
         FLASK_PID=$!
         echo "Flask app restarted with PID: $FLASK_PID"
     fi
