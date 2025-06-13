@@ -109,10 +109,11 @@ document.addEventListener('DOMContentLoaded', function() {
     socket.on('disconnect', () => {
         showStatus('Disconnected from server', 'error');
     });    socket.on('ads_update', (data) => {
+        console.log('📡 Received ads_update from scheduler:', data);
+        
         // Add to changes log
         const timestamp = data.timestamp || new Date().toLocaleString();        let newAdIds = [];
-        
-        if (data.new_ads && data.new_ads.length > 0) {
+          if (data.new_ads && data.new_ads.length > 0) {
             // Play notification sound
             playNotification();
             
@@ -129,7 +130,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 });
             });
             
-            showStatus(`${data.new_ads.length} new advertisement(s) found!`, 'success');
+            showStatus(`${data.new_ads.length} new advertisement(s) found! Refreshing data...`, 'success');
         }
         
         if (data.deleted_ads && data.deleted_ads.length > 0) {
@@ -143,29 +144,65 @@ document.addEventListener('DOMContentLoaded', function() {
                 });
             });
             
-            showStatus(`${data.deleted_ads.length} advertisement(s) have been removed.`, 'info');
+            showStatus(`${data.deleted_ads.length} advertisement(s) have been removed. Refreshing data...`, 'info');
         }
-        
-        // Update stats
+          // Update stats immediately
         fetchSystemStats();
         
         // Keep changes log at a reasonable size
         if (changesLog.length > 100) {
             changesLog = changesLog.slice(0, 100);
         }
-          // Auto-refresh data based on which tab is currently active
+        
+        // Auto-refresh data based on which tab is currently active (like manual check)
         const activeTab = document.querySelector('.tab.active');
         const activeTabId = activeTab ? activeTab.getAttribute('data-tab') : 'recent';
-        
-        // Refresh data based on active tab and whether there are changes
+          // Refresh data based on active tab and whether there are changes
         if (data.new_ads && data.new_ads.length > 0 || data.deleted_ads && data.deleted_ads.length > 0) {
+            console.log('🔄 Auto-refreshing data after scheduler update...');
+            
+            // Add a subtle refresh indicator to the active tab
+            const activeTab = document.querySelector('.tab.active');
+            if (activeTab) {
+                const originalIcon = activeTab.querySelector('i');
+                if (originalIcon) {
+                    const originalClass = originalIcon.className;
+                    originalIcon.className = 'fas fa-sync fa-spin';
+                    
+                    // Restore original icon after refresh
+                    setTimeout(() => {
+                        originalIcon.className = originalClass;
+                    }, 2000);
+                }
+            }
+            
             if (activeTabId === 'recent') {
-                // Only refresh recent ads with highlighting if we're on the recent tab
+                // Refresh recent ads with highlighting if we're on the recent tab
                 fetchRecentAdsWithHighlight(newAdIds);
+            } else if (activeTabId === 'keywords') {
+                // Refresh keywords data if we're on keywords tab
+                fetchKeywords();
+                // Also refresh recent ads in background for other tabs
+                fetchRecentAds();
+            } else if (activeTabId === 'changes') {
+                // Update changes log display
+                updateChangesLog();
+                // Also refresh recent ads in background
+                fetchRecentAds();
             } else {
-                // For other tabs, refresh recent ads without highlighting (for background data)
+                // For any other tab, refresh recent ads in background
                 fetchRecentAds();
             }
+              // Always refresh stats regardless of active tab
+            fetchSystemStats();
+            
+            // Show completion message after a brief delay
+            setTimeout(() => {
+                const updateType = data.new_ads && data.new_ads.length > 0 ? 'New ads' : 'Changes';
+                showStatus(`${updateType} detected - data refreshed automatically`, 'success');
+            }, 1000);
+            
+            console.log('✅ Auto-refresh complete');
         }
         
         // Update changes log
