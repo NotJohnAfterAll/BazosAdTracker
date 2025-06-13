@@ -33,7 +33,8 @@ WORKDIR /app
 # Install system dependencies
 RUN apt-get update && apt-get install -y \
     curl \
-    && apt-get install wget \
+    wget \
+    supervisor \
     && rm -rf /var/lib/apt/lists/* \
     && apt-get clean
 
@@ -51,43 +52,12 @@ COPY --from=frontend-builder /app/frontend/dist ./frontend/dist
 RUN mkdir -p data logs && \
     chown -R appuser:appuser /app
 
-# Create a startup script for production with proper error handling
-RUN echo '#!/bin/bash\n\
-set -e\n\
-\n\
-echo "Starting Bazos Ad Tracker in production mode..."\n\
-\n\
-# Ensure data directory exists and has proper permissions\n\
-mkdir -p /app/data /app/logs\n\
-\n\
-# Start scheduler in background\n\
-echo "Starting scheduler process..."\n\
-python scheduler.py &\n\
-SCHEDULER_PID=$!\n\
-\n\
-# Function to handle shutdown\n\
-cleanup() {\n\
-    echo "Received shutdown signal, cleaning up..."\n\
-    if kill -0 $SCHEDULER_PID 2>/dev/null; then\n\
-        echo "Stopping scheduler process..."\n\
-        kill -TERM $SCHEDULER_PID\n\
-        wait $SCHEDULER_PID\n\
-    fi\n\
-    exit 0\n\
-}\n\
-\n\
-# Set up signal handlers\n\
-trap cleanup SIGTERM SIGINT\n\
-\n\
-# Give scheduler time to start\n\
-sleep 2\n\
-\n\
-# Start web application\n\
-echo "Starting web application with Flask..."\n\
-export FLASK_ENV=production\n\
-export FLASK_DEBUG=false\n\
-exec python app.py\n\
-' > /app/start.sh && chmod +x /app/start.sh
+# Copy supervisor configuration
+COPY supervisord.conf /etc/supervisor/conf.d/supervisord.conf
+
+# Create log directory for supervisor  
+RUN mkdir -p /var/log/supervisor && \
+    chown -R appuser:appuser /var/log/supervisor
 
 # Switch to non-root user
 USER appuser
@@ -99,5 +69,5 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
 # Expose the port (Coolify will map this automatically)
 EXPOSE ${PORT:-5000}
 
-# Production startup command with both scheduler and web app
-CMD ["/app/start.sh"]
+# Use supervisor to manage both Flask app and scheduler
+CMD ["/usr/bin/supervisord", "-c", "/etc/supervisor/conf.d/supervisord.conf"]

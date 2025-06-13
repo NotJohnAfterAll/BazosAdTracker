@@ -15,7 +15,9 @@ import sys
 import json
 import time
 import logging
-from datetime import datetime
+import threading
+import stat
+from datetime import datetime, timedelta
 from flask import Flask, jsonify, request, send_from_directory, send_file, make_response
 from flask_socketio import SocketIO
 from flask_cors import CORS
@@ -798,6 +800,85 @@ def debug_api():
     
     return jsonify(debug_info)
 
+# File monitoring for automatic data reloading
+file_mtimes = {
+    'keywords': 0,
+    'ads': 0
+}
+
+def check_file_changes():
+    """Check if data files have been modified and reload if necessary"""
+    global keywords, all_ads, file_mtimes
+    
+    try:
+        # Check keywords file
+        if os.path.exists(KEYWORDS_FILE):
+            keywords_mtime = os.path.getmtime(KEYWORDS_FILE)
+            if keywords_mtime > file_mtimes['keywords']:
+                print(f"🔄 Keywords file changed, reloading...")
+                keywords = load_keywords()
+                file_mtimes['keywords'] = keywords_mtime
+                print(f"✅ Reloaded {len(keywords)} keywords: {keywords}")
+        
+        # Check ads file  
+        if os.path.exists(ADS_FILE):
+            ads_mtime = os.path.getmtime(ADS_FILE)
+            if ads_mtime > file_mtimes['ads']:
+                print(f"🔄 Ads file changed, reloading...")
+                all_ads = load_ads()
+                file_mtimes['ads'] = ads_mtime
+                total_ads = sum(len(ad_list) for ad_list in all_ads.values()) if all_ads else 0
+                print(f"✅ Reloaded {len(all_ads)} keyword groups with {total_ads} total ads")
+                
+                # Check for and handle notifications
+                handle_pending_notifications()
+                
+    except Exception as e:
+        print(f"❌ Error checking file changes: {e}")
+
+def handle_pending_notifications():
+    """Check for and process pending notifications from scheduler"""
+    notifications_file = 'data/notifications.json'
+    
+    if os.path.exists(notifications_file):
+        try:
+            with open(notifications_file, 'r', encoding='utf-8') as f:
+                notification = json.load(f)
+            
+            print(f"📢 Processing notification: {len(notification.get('new_ads', []))} new, {len(notification.get('deleted_ads', []))} deleted")
+            
+            # Emit Socket.IO event to connected clients
+            if notification.get('new_ads') or notification.get('deleted_ads'):
+                socketio.emit('ads_update', notification)
+                print(f"✅ Notification sent to connected clients")
+            
+            # Delete the notification file after processing
+            os.remove(notifications_file)
+            
+        except Exception as e:
+            print(f"❌ Error processing notifications: {e}")
+
+def start_file_monitoring():
+    """Start background thread to monitor file changes"""
+    def monitor_files():
+        while True:
+            try:
+                check_file_changes()
+                time.sleep(5)  # Check every 5 seconds
+            except Exception as e:
+                print(f"❌ File monitoring error: {e}")
+                time.sleep(10)  # Wait longer on error
+    
+    monitor_thread = threading.Thread(target=monitor_files, daemon=True)
+    monitor_thread.start()
+    print("🔍 Started file monitoring thread")
+
+# Initialize file modification times
+if os.path.exists(KEYWORDS_FILE):
+    file_mtimes['keywords'] = os.path.getmtime(KEYWORDS_FILE)
+if os.path.exists(ADS_FILE):
+    file_mtimes['ads'] = os.path.getmtime(ADS_FILE)
+
 if __name__ == '__main__':
     # Get port and host from environment variables (Coolify compatibility)
     port = int(os.getenv('PORT', 5000))
@@ -805,12 +886,16 @@ if __name__ == '__main__':
     
     # Check if we're running in production (with Gunicorn) or development
     is_production = os.getenv('FLASK_ENV', 'development') == 'production'
-    is_gunicorn = 'gunicorn' in os.environ.get('SERVER_SOFTWARE', '')
-    
+    is_gunicorn = 'gunicorn' in os.environ.get('SERVER_SOFTWARE', '')    
     print(f"🚀 Starting Bazos Ad Tracker...")
     print(f"   Environment: {'Production' if is_production else 'Development'}")
     print(f"   Server: {'Gunicorn' if is_gunicorn else 'Flask Dev Server'}")
     print(f"   Host: {host}:{port}")
+    
+    # Start file monitoring for production (to detect scheduler updates)
+    if is_production or is_gunicorn:
+        print("🔍 Starting file monitoring for production...")
+        start_file_monitoring()
     
     # Only start scheduler in development mode or when explicitly enabled
     if not is_production and not is_gunicorn:
@@ -821,10 +906,10 @@ if __name__ == '__main__':
             print(f"📅 Starting scheduler with {check_interval} second intervals...")
             scheduler.add_job(check_for_new_ads, 'interval', seconds=check_interval, id='check_ads')
             scheduler.start()
+        else:    
             print("✅ Scheduler started successfully!")
-    else:
-        print("🏭 Production mode: Scheduler should be running as separate process")
-        print("   Start scheduler with: python scheduler.py")
+            print("🏭 Production mode: Scheduler should be running as separate process")
+            print("   Start scheduler with: python scheduler.py")
     
     print(f"🌐 Starting Flask app on http://{host}:{port}")
     print("   HTTPS handled by reverse proxy (Cloudflare/Coolify)")
