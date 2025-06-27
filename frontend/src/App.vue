@@ -5,7 +5,7 @@
       <source src="/notification.mp3" type="audio/mpeg">
     </audio>
 
-    <div class="container mx-auto px-4 py-8">      <AppHeader 
+    <div class="container mx-auto px-4 sm:px-6 lg:px-8 py-4 sm:py-8">      <AppHeader 
         :stats="stats"
         :loading="loadingManualCheck"
         @settings="settingsOpen = true"

@@ -1,7 +1,8 @@
 <template>
   <Card class="p-4 mb-6">
-    <div class="flex flex-col md:flex-row gap-4 items-start md:items-center">
-      <div class="flex-grow">
+    <div class="space-y-4">
+      <!-- Add keyword section - full width -->
+      <div>
         <label for="new-keyword" class="block text-sm font-medium text-foreground mb-1">Add New Keyword</label>
         <div class="flex gap-2">
           <Input
@@ -9,7 +10,7 @@
             v-model="newKeyword"
             placeholder="Enter keyword to track"
             @keyup.enter="handleAddKeyword"
-            class="w-full"
+            class="flex-1"
           />
           <Button @click="handleAddKeyword" class="whitespace-nowrap">
             <i class="fas fa-plus mr-2"></i> Add
@@ -17,7 +18,8 @@
         </div>
       </div>
       
-      <div class="w-full md:w-auto">
+      <!-- Active keywords section -->
+      <div>
         <label class="block text-sm font-medium text-foreground mb-1">Active Keywords</label>
         <div class="flex flex-wrap gap-2 min-h-[40px]">          <div
             v-for="keyword in keywords"
