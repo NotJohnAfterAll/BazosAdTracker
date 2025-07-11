@@ -17,14 +17,24 @@ import time
 import logging
 import threading
 import stat
+import requests
 from datetime import datetime, timedelta
-from flask import Flask, jsonify, request, send_from_directory, send_file, make_response
-from flask_socketio import SocketIO
+from flask import Flask, jsonify, request, send_from_directory, send_file, make_response, redirect, url_for, g
+from flask_socketio import SocketIO, emit, join_room, leave_room
 from flask_cors import CORS
+from flask_login import LoginManager, login_required
+from flask_jwt_extended import JWTManager
+from flask_limiter import Limiter
+from flask_limiter.util import get_remote_address
 from apscheduler.schedulers.background import BackgroundScheduler
 from dotenv import load_dotenv
 from app.utils.bazos_scraper_fixed import BazosScraper
+from app.models import db, User, UserKeyword, UserAd, UserFavorite, UserStats
+from app.auth import AuthService, require_auth, rate_limit_auth
+from app.user_service import UserService
 from utils.stats_tracker import StatsTracker
+
+import threading
 
 # Set up logging
 logging.basicConfig(
@@ -35,11 +45,68 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+# Threading lock to prevent concurrent database operations
+check_in_progress = threading.Lock()
+
 # Load environment variables
 load_dotenv()
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = os.getenv('SECRET_KEY', 'default-secret-key')
+
+# Database configuration
+database_url = os.getenv('DATABASE_URL')
+if database_url:
+    # Production database (PostgreSQL via Coolify)
+    app.config['SQLALCHEMY_DATABASE_URI'] = database_url
+else:
+    # Development database (SQLite)
+    # Use absolute path for SQLite
+    base_dir = os.path.abspath(os.path.dirname(__file__))
+    db_path = os.path.join(base_dir, 'data', 'bazos_checker.db')
+    app.config['SQLALCHEMY_DATABASE_URI'] = f'sqlite:///{db_path}?timeout=20'
+
+app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+# Configure SQLite for better concurrent access
+app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
+    'pool_timeout': 20,
+    'pool_recycle': -1,
+    'pool_pre_ping': True,
+    'connect_args': {
+        'timeout': 20,
+        'check_same_thread': False
+    }
+}
+
+# JWT configuration
+app.config['JWT_SECRET_KEY'] = os.getenv('JWT_SECRET_KEY', 'jwt-secret-string')
+app.config['JWT_ACCESS_TOKEN_EXPIRES'] = timedelta(days=1)
+app.config['JWT_REFRESH_TOKEN_EXPIRES'] = timedelta(days=30)
+
+# Initialize extensions
+db.init_app(app)
+jwt = JWTManager(app)
+login_manager = LoginManager(app)
+login_manager.login_view = 'auth.login'
+login_manager.login_message = 'Please log in to access this page.'
+
+# Rate limiting
+limiter = Limiter(
+    key_func=get_remote_address,
+    default_limits=["200 per day", "50 per hour"],
+    storage_uri="memory://"
+)
+limiter.init_app(app)
+
+# Initialize stats tracker
+stats = StatsTracker()
+
+# Reset system uptime when app starts
+stats.reset_uptime()
+
+@login_manager.user_loader
+def load_user(user_id):
+    return db.session.get(User, int(user_id))
 
 # Enable CORS for the Vue.js frontend
 # In production, CORS is handled by reverse proxy, but allow for development
@@ -95,43 +162,29 @@ def load_test_config():
             print(f"Error loading test configuration: {e}")
     return None
 
-# Initialize components
-test_config = load_test_config()
 print("Initializing BazosScraper...")
-
-# Initialize scraper with test mode if configuration exists
-if test_config and test_config.get('simulate_removal'):
-    ad_id_to_exclude = test_config.get('ad_id_to_remove')
-    ads_to_exclude = [ad_id_to_exclude] if ad_id_to_exclude else []
-    print(f"Initializing scraper in test mode, excluding ads: {ads_to_exclude}")
-    scraper = BazosScraper(test_mode=True, ads_to_exclude=ads_to_exclude)
-else:
-    print("Initializing scraper in normal mode")
-    scraper = BazosScraper()
+scraper = BazosScraper()
 
 print("Initializing BackgroundScheduler...")
 scheduler = BackgroundScheduler()
-print("Initializing StatsTracker...")
-stats = StatsTracker()
 
-# Record system start
-print("Recording system start...")
-stats.record_system_start()
-print("Resetting uptime...")
-stats.reset_uptime()
-print("Recalculating stats from current data...")
-stats.recalculate_stats_from_current_data()
+print("Initializing UserService...")
+user_service = UserService(scraper)
+
 print("App initialization complete.")
 
-# Data storage
-KEYWORDS_FILE = 'data/keywords.json'
-ADS_FILE = 'data/ads.json'
+# DEPRECATED: Old JSON-based data storage - now using database  
+# Data storage files (keeping for reference/migration only)
+KEYWORDS_FILE = 'data/keywords.json'  # Keep defined for migration/cleanup code
+ADS_FILE = 'data/ads.json'  # Keep defined for migration/cleanup code
 
 # Ensure data directory exists
 os.makedirs('data', exist_ok=True)
 
+# DEPRECATED: Old JSON-based functions - now using database
 # Load saved keywords
 def load_keywords():
+    """DEPRECATED: Use user_service.get_user_keywords() instead"""
     if os.path.exists(KEYWORDS_FILE):
         try:
             with open(KEYWORDS_FILE, 'r', encoding='utf-8-sig') as f:
@@ -140,13 +193,15 @@ def load_keywords():
             return []
     return []
 
-# Save keywords
+# Save keywords  
 def save_keywords(keywords):
+    """DEPRECATED: Use user_service.add_user_keyword() instead"""
     with open(KEYWORDS_FILE, 'w', encoding='utf-8') as f:
         json.dump(keywords, f, ensure_ascii=False)
 
 # Load saved advertisements
 def load_ads():
+    """DEPRECATED: Use user_service.get_user_ads() instead"""
     if os.path.exists(ADS_FILE):
         try:
             with open(ADS_FILE, 'r', encoding='utf-8-sig') as f:
@@ -157,26 +212,17 @@ def load_ads():
 
 # Save advertisements
 def save_ads(ads):
+    """DEPRECATED: Use user_service methods instead"""
     with open(ADS_FILE, 'w', encoding='utf-8') as f:
         json.dump(ads, f, ensure_ascii=False)
 
 # Initialize data with debugging
-print("Loading data from files...")
-keywords = load_keywords()
-all_ads = load_ads()
+print("Using database for user-specific data storage...")
+print("Old JSON file system disabled in favor of database")
+print("Data initialization complete.")
 
-print(f"Loaded {len(keywords)} keywords: {keywords}")
-print(f"Loaded {len(all_ads)} keyword groups for ads")
-if all_ads:
-    total_ads = sum(len(ad_list) for ad_list in all_ads.values())
-    print(f"Total ads loaded: {total_ads}")
-    print(f"Keyword groups: {list(all_ads.keys())}")
-else:
-    print("WARNING: No ads loaded from file!")
-print("Data loading complete.")
-
-# Check for new advertisements
-def check_for_new_ads():
+# Old check function - keeping for reference but not used
+def check_for_new_ads_old():
     """
     Main function to check for new ads for all tracked keywords.
     This function:
@@ -440,8 +486,15 @@ def notification_sound():
         # Fallback to silence if file not found
         return '', 404
 
+# ============================================================================
+# DEPRECATED API ENDPOINTS - Using JSON file system (OLD)
+# These endpoints are kept for backward compatibility but should not be used
+# Use the new /api/user/* endpoints which use the database instead
+# ============================================================================
+
 @app.route('/api/keywords', methods=['GET', 'POST'])
 def manage_keywords():
+    """DEPRECATED: Use /api/user/keywords instead"""
     global keywords
     
     if request.method == 'POST':
@@ -672,18 +725,13 @@ def get_system_stats():
 def manual_check():
     """Manually trigger ad checking for testing"""
     print("=" * 50)
-    print("MANUAL CHECK TRIGGERED FROM WEB INTERFACE")
+    print("OLD MANUAL CHECK ENDPOINT - DISABLED")
+    print("Use /api/user/manual-check instead")
     print("=" * 50)
-    try:
-        check_for_new_ads()
-        print("=" * 50)
-        print("MANUAL CHECK COMPLETED SUCCESSFULLY")
-        print("=" * 50)
-        return jsonify({"status": "success", "message": "Manual ad check completed"})
-    except Exception as e:
-        print(f"MANUAL CHECK FAILED: {e}")
-        print("=" * 50)
-        return jsonify({"status": "error", "message": str(e)}), 500
+    return jsonify({
+        "status": "error", 
+        "message": "This endpoint is deprecated. Please use /api/user/manual-check"
+    }), 400
 
 @app.route('/api/recalculate-stats')
 def recalculate_stats():
@@ -732,22 +780,28 @@ def health_check():
                 "scheduler": "ok" if scheduler.running else "stopped"
             },
             "stats": {
-                "keywords_count": len(keywords),
-                "total_ads": sum(len(ads) for ads in all_ads.values()),
+                "total_users": User.query.count() if db else 0,
+                "total_keywords": UserKeyword.query.filter_by(is_active=True).count() if db else 0,
+                "total_ads": UserAd.query.filter_by(is_deleted=False).count() if db else 0,
                 "uptime": stats.get_stats().get('system', {}).get('uptime_seconds', 0)
             }
         }
         
-        # Check if critical services are working
-        if not os.path.exists(KEYWORDS_FILE):
-            health_status["services"]["database"] = "warning"
+        # Check if database is accessible
+        try:
+            db.session.execute(db.text('SELECT 1'))
+            health_status["services"]["database"] = "ok"
+        except Exception:
+            health_status["services"]["database"] = "error"
+            health_status["status"] = "degraded"
         
         if not scheduler.running:
             health_status["status"] = "degraded"
             
         return jsonify(health_status), 200
         
-    except Exception as e:        return jsonify({
+    except Exception as e:
+        return jsonify({
             "status": "unhealthy",
             "error": str(e),
             "timestamp": datetime.now().isoformat()
@@ -767,36 +821,27 @@ def debug_api():
         },
         "file_system": {
             "data_dir_exists": os.path.exists("data"),
+            "database_exists": os.path.exists("data/bazos_checker.db"),
             "keywords_file_exists": os.path.exists("data/keywords.json"),
             "ads_file_exists": os.path.exists("data/ads.json"), 
             "stats_file_exists": os.path.exists("data/stats.json")
         },
-        "data_status": {
-            "keywords_in_memory": len(keywords),
-            "keywords_list": keywords,
-            "ads_groups_in_memory": len(all_ads),
-            "ads_groups": list(all_ads.keys()),
-            "total_ads_in_memory": sum(len(ad_list) for ad_list in all_ads.values()) if all_ads else 0
+        "database_status": {
+            "total_users": "unknown",
+            "total_keywords": "unknown", 
+            "total_ads": "unknown"
         }
     }
     
-    # Try to read files directly
+    # Try to get database stats
     try:
-        if os.path.exists("data/keywords.json"):
-            with open("data/keywords.json", 'r', encoding='utf-8-sig') as f:
-                file_keywords = json.load(f)
-                debug_info["file_status"] = {
-                    "keywords_from_file": file_keywords,
-                    "keywords_count": len(file_keywords)
-                }
-        
-        if os.path.exists("data/ads.json"):
-            with open("data/ads.json", 'r', encoding='utf-8-sig') as f:
-                file_ads = json.load(f)
-                debug_info["file_status"]["ads_from_file_count"] = sum(len(ad_list) for ad_list in file_ads.values()) if isinstance(file_ads, dict) else 0
-                debug_info["file_status"]["ads_groups_from_file"] = list(file_ads.keys()) if isinstance(file_ads, dict) else "invalid format"
+        debug_info["database_status"] = {
+            "total_users": User.query.count(),
+            "total_keywords": UserKeyword.query.filter_by(is_active=True).count(),
+            "total_ads": UserAd.query.filter_by(is_deleted=False).count()
+        }
     except Exception as e:
-        debug_info["file_read_error"] = str(e)
+        debug_info["database_error"] = str(e)
     
     return jsonify(debug_info)
 
@@ -879,6 +924,488 @@ if os.path.exists(KEYWORDS_FILE):
 if os.path.exists(ADS_FILE):
     file_mtimes['ads'] = os.path.getmtime(ADS_FILE)
 
+# Initialize database tables
+with app.app_context():
+    try:
+        db.create_all()
+        print("✅ Database tables initialized")
+    except Exception as e:
+        print(f"❌ Database initialization failed: {e}")
+
+# Authentication routes
+@app.route('/api/auth/register', methods=['POST'])
+@limiter.limit("5 per minute")
+def register():
+    """User registration endpoint"""
+    try:
+        data = request.get_json()
+        if not data:
+            return jsonify({'success': False, 'error': 'No data provided'}), 400
+        
+        username = data.get('username', '').strip()
+        email = data.get('email', '').strip()
+        password = data.get('password', '')
+        
+        if not username or not email or not password:
+            return jsonify({'success': False, 'error': 'All fields are required'}), 400
+        
+        success, message = AuthService.register_user(username, email, password)
+        
+        if success:
+            return jsonify({'success': True, 'message': message}), 201
+        else:
+            return jsonify({'success': False, 'error': message}), 400
+            
+    except Exception as e:
+        logger.error(f"Registration error: {e}")
+        return jsonify({'success': False, 'error': 'Registration failed'}), 500
+
+@app.route('/api/auth/login', methods=['POST'])
+@limiter.limit("10 per minute")
+def login():
+    """User login endpoint"""
+    try:
+        data = request.get_json()
+        if not data:
+            return jsonify({'success': False, 'error': 'No data provided'}), 400
+        
+        username_or_email = data.get('username', '').strip()
+        password = data.get('password', '')
+        remember_me = data.get('remember_me', False)
+        
+        if not username_or_email or not password:
+            return jsonify({'success': False, 'error': 'Username/email and password are required'}), 400
+        
+        success, message, user_data = AuthService.login_user_service(
+            username_or_email, password, remember_me
+        )
+        
+        if success:
+            return jsonify({
+                'success': True,
+                'message': message,
+                'user': user_data['user'],
+                'access_token': user_data['access_token'],
+                'refresh_token': user_data['refresh_token']
+            }), 200
+        else:
+            return jsonify({'success': False, 'error': message}), 401
+            
+    except Exception as e:
+        logger.error(f"Login error: {e}")
+        return jsonify({'success': False, 'error': 'Login failed'}), 500
+
+@app.route('/api/auth/logout', methods=['POST'])
+@require_auth
+def logout():
+    """User logout endpoint"""
+    try:
+        session_token = request.headers.get('X-Session-Token')
+        success, message = AuthService.logout_user_service(session_token)
+        
+        return jsonify({'success': success, 'message': message}), 200
+        
+    except Exception as e:
+        logger.error(f"Logout error: {e}")
+        return jsonify({'success': False, 'error': 'Logout failed'}), 500
+
+@app.route('/api/auth/me')
+@require_auth
+def get_current_user():
+    """Get current user information"""
+    try:
+        user = g.current_user
+        return jsonify({
+            'success': True,
+            'user': user.to_dict()
+        }), 200
+        
+    except Exception as e:
+        logger.error(f"Get current user error: {e}")
+        return jsonify({'success': False, 'error': 'Failed to get user info'}), 500
+
+@app.route('/api/auth/change-password', methods=['POST'])
+@require_auth
+def change_password():
+    """Change user password"""
+    try:
+        data = request.get_json()
+        if not data:
+            return jsonify({'success': False, 'error': 'No data provided'}), 400
+        
+        current_password = data.get('current_password', '')
+        new_password = data.get('new_password', '')
+        
+        if not current_password or not new_password:
+            return jsonify({'success': False, 'error': 'Current and new passwords are required'}), 400
+        
+        user = g.current_user
+        
+        # Verify current password
+        if not user.check_password(current_password):
+            return jsonify({'success': False, 'error': 'Current password is incorrect'}), 400
+        
+        # Validate new password
+        valid, message = AuthService.validate_password(new_password)
+        if not valid:
+            return jsonify({'success': False, 'error': message}), 400
+        
+        # Update password
+        user.set_password(new_password)
+        db.session.commit()
+        
+        return jsonify({'success': True, 'message': 'Password changed successfully'}), 200
+        
+    except Exception as e:
+        db.session.rollback()
+        logger.error(f"Change password error: {e}")
+        return jsonify({'success': False, 'error': 'Failed to change password'}), 500
+
+# ============================================================================
+# END OF DEPRECATED API ENDPOINTS
+# ============================================================================
+
+# User-specific routes (NEW - Database-based)
+@app.route('/api/user/keywords', methods=['GET', 'POST'])
+@require_auth
+def manage_user_keywords():
+    """Manage user keywords"""
+    user_id = g.current_user.id
+    
+    if request.method == 'POST':
+        try:
+            data = request.json
+            if not data:
+                return jsonify({'success': False, 'error': 'No data provided'}), 400
+            
+            keyword = data.get('keyword', '').strip()
+            if not keyword:
+                return jsonify({'success': False, 'error': 'Keyword is required'}), 400
+            
+            success, message = user_service.add_user_keyword(user_id, keyword)
+            
+            if success:
+                keywords = user_service.get_user_keywords(user_id)
+                return jsonify({
+                    'success': True,
+                    'message': message,
+                    'keywords': [kw['keyword'] for kw in keywords]
+                }), 200
+            else:
+                return jsonify({'success': False, 'error': message}), 400
+                
+        except Exception as e:
+            logger.error(f"Add keyword error: {e}")
+            return jsonify({'success': False, 'error': 'Failed to add keyword'}), 500
+    
+    # GET request
+    try:
+        keywords = user_service.get_user_keywords(user_id)
+        return jsonify({
+            'success': True,
+            'keywords': [kw['keyword'] for kw in keywords]
+        }), 200
+        
+    except Exception as e:
+        logger.error(f"Get keywords error: {e}")
+        return jsonify({'success': False, 'error': 'Failed to get keywords'}), 500
+
+@app.route('/api/user/keywords/<keyword>', methods=['DELETE'])
+@require_auth
+def delete_user_keyword(keyword):
+    """Delete user keyword"""
+    try:
+        user_id = g.current_user.id
+        success, message = user_service.remove_user_keyword(user_id, keyword)
+        
+        if success:
+            keywords = user_service.get_user_keywords(user_id)
+            return jsonify({
+                'success': True,
+                'message': message,
+                'keywords': [kw['keyword'] for kw in keywords]
+            }), 200
+        else:
+            return jsonify({'success': False, 'error': message}), 400
+            
+    except Exception as e:
+        logger.error(f"Delete keyword error: {e}")
+        return jsonify({'success': False, 'error': 'Failed to delete keyword'}), 500
+
+@app.route('/api/user/ads')
+@require_auth
+def get_user_ads():
+    """Get user ads"""
+    try:
+        user_id = g.current_user.id
+        keyword = request.args.get('keyword')
+        
+        if keyword:
+            ads = user_service.get_user_ads(user_id, keyword)
+            return jsonify({'success': True, 'ads': ads}), 200
+        else:
+            ads = user_service.get_user_ads(user_id)
+            return jsonify({'success': True, 'ads': ads}), 200
+            
+    except Exception as e:
+        logger.error(f"Get user ads error: {e}")
+        return jsonify({'success': False, 'error': 'Failed to get ads'}), 500
+
+@app.route('/api/user/recent-ads')
+@require_auth
+def get_user_recent_ads():
+    """Get user recent ads"""
+    try:
+        user_id = g.current_user.id
+        ads = user_service.get_user_recent_ads(user_id)
+        return jsonify({'success': True, 'ads': ads}), 200
+        
+    except Exception as e:
+        logger.error(f"Get user recent ads error: {e}")
+        return jsonify({'success': False, 'error': 'Failed to get recent ads'}), 500
+
+@app.route('/api/user/favorites', methods=['GET', 'POST'])
+@require_auth
+def manage_user_favorites():
+    """Manage user favorites"""
+    user_id = g.current_user.id
+    
+    if request.method == 'POST':
+        try:
+            data = request.json
+            if not data:
+                return jsonify({'success': False, 'error': 'No data provided'}), 400
+            
+            ad_id = data.get('ad_id')
+            if not ad_id:
+                return jsonify({'success': False, 'error': 'Ad ID is required'}), 400
+            
+            success, message = user_service.toggle_user_favorite(user_id, ad_id)
+            return jsonify({'success': success, 'message': message}), 200
+            
+        except Exception as e:
+            logger.error(f"Toggle favorite error: {e}")
+            return jsonify({'success': False, 'error': 'Failed to toggle favorite'}), 500
+    
+    # GET request
+    try:
+        favorites = user_service.get_user_favorites(user_id)
+        return jsonify({'success': True, 'favorites': favorites}), 200
+        
+    except Exception as e:
+        logger.error(f"Get favorites error: {e}")
+        return jsonify({'success': False, 'error': 'Failed to get favorites'}), 500
+
+@app.route('/api/user/stats')
+@require_auth
+def get_user_stats():
+    """Get user statistics"""
+    try:
+        user_id = g.current_user.id
+        stats = user_service.get_user_stats(user_id)
+        return jsonify({'success': True, 'stats': stats}), 200
+        
+    except Exception as e:
+        logger.error(f"Get user stats error: {e}")
+        return jsonify({'success': False, 'error': 'Failed to get stats'}), 500
+
+@app.route('/api/user/manual-check')
+@require_auth
+def manual_user_check():
+    """Manual check for user ads"""
+    try:
+        user_id = g.current_user.id
+        logger.info(f"Starting manual check for user {user_id}")
+        
+        # Check if another check is in progress
+        if not check_in_progress.acquire(blocking=False):
+            return jsonify({
+                'success': False, 
+                'error': 'Another check is already in progress. Please wait and try again.'
+            }), 409
+        
+        try:
+            success, new_ads, deleted_ads = user_service.check_user_ads(user_id)
+            
+            if success:
+                # Ensure database session is committed and closed
+                db.session.commit()
+                db.session.close()
+                
+                logger.info(f"Manual check completed for user {user_id}: {len(new_ads)} new ads, {len(deleted_ads)} deleted ads")
+                
+                return jsonify({
+                    'success': True,
+                    'message': 'Manual check completed',
+                    'new_ads': len(new_ads),
+                    'deleted_ads': len(deleted_ads)
+                }), 200
+            else:
+                logger.error(f"Manual check failed for user {user_id}")
+                return jsonify({'success': False, 'error': 'Manual check failed'}), 500
+        finally:
+            check_in_progress.release()
+            
+    except Exception as e:
+        logger.error(f"Manual check error for user {g.current_user.id if hasattr(g, 'current_user') else 'unknown'}: {e}")
+        return jsonify({'success': False, 'error': 'Failed to perform manual check'}), 500
+
+# User-specific check function for scheduler
+def check_all_users_ads():
+    """Check ads for all users in the system"""
+    # Use lock to prevent concurrent executions
+    if not check_in_progress.acquire(blocking=False):
+        logger.info("Scheduled check already in progress, skipping this run")
+        return
+    
+    try:
+        with app.app_context():
+            from app.models import User
+            
+            users = User.query.filter_by(is_active=True).all()
+            logger.info(f"Running scheduled check for {len(users)} active users")
+            
+            total_new_ads = 0
+            total_deleted_ads = 0
+            
+            for user in users:
+                try:
+                    success, new_ads, deleted_ads = user_service.check_user_ads(user.id)
+                    if success:
+                        total_new_ads += len(new_ads)
+                        total_deleted_ads += len(deleted_ads)
+                        
+                        # Emit updates to user's room if they have changes
+                        if new_ads or deleted_ads:
+                            socketio.emit('ads_update', {
+                                'new_ads': new_ads,
+                                'deleted_ads': deleted_ads,
+                                'message': f'Found {len(new_ads)} new ads, {len(deleted_ads)} removed'
+                            }, room=f'user_{user.id}')
+                            
+                    else:
+                        logger.error(f"Failed to check ads for user {user.id}")
+                        
+                except Exception as e:
+                    logger.error(f"Error checking ads for user {user.id}: {e}")
+                    
+            logger.info(f"Scheduled check complete. Total: {total_new_ads} new ads, {total_deleted_ads} deleted ads")
+            
+    except Exception as e:
+        logger.error(f"Error in scheduled check: {e}")
+    finally:
+        check_in_progress.release()
+
+# WebSocket events for user-specific updates
+@socketio.on('connect')
+def handle_connect():
+    """Handle WebSocket connection"""
+    # For now, allow all connections - TODO: implement proper JWT auth for websockets
+    emit('status', {'message': 'Connected successfully'})
+    logger.info("User connected to WebSocket")
+
+@socketio.on('disconnect')
+def handle_disconnect():
+    """Handle WebSocket disconnection"""
+    logger.info("User disconnected from WebSocket")
+
+# Image proxy endpoint to handle CORS issues
+@app.route('/api/image-proxy')
+@limiter.exempt  # Exempt from rate limiting to avoid 429 errors on image loads
+def image_proxy():
+    """Proxy images to avoid CORS issues"""
+    try:
+        image_url = request.args.get('url')
+        if not image_url:
+            logger.warning("Image proxy: Missing URL parameter")
+            return jsonify({'error': 'URL parameter required'}), 400
+        
+        # Simple validation
+        if not image_url.startswith(('http://', 'https://')):
+            logger.warning(f"Image proxy: Invalid URL format: {image_url}")
+            return jsonify({'error': 'Invalid URL'}), 400
+        
+        # Additional validation for bazos.cz images
+        if 'bazos.cz' not in image_url:
+            logger.warning(f"Image proxy: Non-bazos URL blocked: {image_url}")
+            return jsonify({'error': 'Only bazos.cz images allowed'}), 400
+        
+        logger.debug(f"Image proxy: Fetching {image_url}")
+        
+        # Fetch the image with better headers and session
+        session = requests.Session()
+        session.headers.update({
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+            'Accept': 'image/webp,image/apng,image/*,*/*;q=0.8',
+            'Accept-Language': 'en-US,en;q=0.9',
+            'Accept-Encoding': 'gzip, deflate, br',
+            'Connection': 'keep-alive',
+            'Upgrade-Insecure-Requests': '1'
+        })
+        
+        response = session.get(image_url, timeout=15, stream=True)
+        
+        if response.status_code == 200:
+            content_type = response.headers.get('Content-Type', 'image/jpeg')
+            
+            # Validate it's actually an image
+            if not content_type.startswith('image/'):
+                logger.warning(f"Image proxy: Invalid content type: {content_type}")
+                return jsonify({'error': 'Invalid image content'}), 400
+            
+            # Return the image with proper headers
+            return response.content, 200, {
+                'Content-Type': content_type,
+                'Cache-Control': 'public, max-age=7200',  # Cache for 2 hours
+                'Access-Control-Allow-Origin': '*',
+                'Access-Control-Allow-Methods': 'GET',
+                'Access-Control-Allow-Headers': 'Content-Type'
+            }
+        else:
+            logger.warning(f"Image proxy: HTTP {response.status_code} for {image_url}")
+            return jsonify({'error': f'Failed to fetch image: HTTP {response.status_code}'}), 404
+            
+    except requests.exceptions.Timeout:
+        logger.error(f"Image proxy: Timeout fetching {image_url}")
+        return jsonify({'error': 'Image request timeout'}), 408
+    except requests.exceptions.ConnectionError:
+        logger.error(f"Image proxy: Connection error fetching {image_url}")
+        return jsonify({'error': 'Connection error'}), 502
+    except requests.exceptions.RequestException as e:
+        logger.error(f"Image proxy: Request error for {image_url}: {e}")
+        return jsonify({'error': 'Request failed'}), 502
+    except Exception as e:
+        logger.error(f"Image proxy error for {image_url}: {e}")
+        return jsonify({'error': 'Failed to proxy image'}), 500
+
+# Catch-all route for SPA (Single Page Application) support
+# This must be the last route defined to catch all non-API routes
+@app.route('/<path:path>')
+def catch_all(path):
+    """
+    Catch-all route to serve the Vue.js SPA for any non-API route.
+    This ensures that client-side routing works properly when users
+    refresh the page or navigate directly to a route like /dashboard.
+    """
+    # Don't interfere with API routes
+    if path.startswith('api/'):
+        return jsonify({'error': 'API endpoint not found'}), 404
+    
+    # Don't interfere with static assets
+    if path.startswith('assets/') or path.startswith('static/'):
+        return jsonify({'error': 'Static file not found'}), 404
+    
+    # For all other routes, serve the Vue.js frontend
+    try:
+        return send_file('frontend/dist/index.html')
+    except:
+        # Fallback if frontend not built
+        return jsonify({
+            "error": "Frontend not found",
+            "message": "Please build the frontend with 'npm run build' in the frontend/ directory",
+            "path_requested": path
+        }), 404
+
 if __name__ == '__main__':
     # Get port and host from environment variables (Coolify compatibility)
     port = int(os.getenv('PORT', 5000))
@@ -899,15 +1426,16 @@ if __name__ == '__main__':
     
     # Only start scheduler in development mode or when explicitly enabled
     if not is_production and not is_gunicorn:
-        # Development mode - use APScheduler
+        # Development mode - use APScheduler for user-specific checks
         check_interval = int(os.getenv('CHECK_INTERVAL', 300))
           # Only start scheduler in the main process (not in Flask's reloader subprocess)
         if not app.debug or os.environ.get('WERKZEUG_RUN_MAIN') == 'true':
-            print(f"📅 Starting scheduler with {check_interval} second intervals...")
-            scheduler.add_job(check_for_new_ads, 'interval', seconds=check_interval, id='check_ads')
+            print(f"📅 Starting user-specific scheduler with {check_interval} second intervals...")
+            # Use user-specific check function instead of global check
+            scheduler.add_job(check_all_users_ads, 'interval', seconds=check_interval, id='check_user_ads')
             scheduler.start()
         else:    
-            print("✅ Scheduler started successfully!")
+            print("✅ User-specific scheduler started successfully!")
             print("🏭 Production mode: Scheduler should be running as separate process")
             print("   Start scheduler with: python scheduler.py")
     

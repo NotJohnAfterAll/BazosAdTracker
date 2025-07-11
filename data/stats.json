@@ -1,43 +1,48 @@
 {
   "checks": {
-    "total": 488,
-    "last_check": "2025-06-12T15:05:57.941910",
-    "avg_duration_ms": 6057.34
+    "total": 503,
+    "last_check": "2025-07-10T20:33:45.938126",
+    "avg_duration_ms": 6182.62
   },
   "ads": {
-    "total_found": 70,
-    "total_deleted": 0,
+    "total_found": 66,
+    "total_deleted": 26,
     "by_keyword": {
       "cdj": {
-        "found": 22,
-        "deleted": 0,
-        "last_found": "2025-06-12T14:50:58.578076"
+        "found": 53,
+        "deleted": 8,
+        "last_found": "2025-07-10T19:58:36.618923",
+        "last_deleted": "2025-07-10T19:58:36.619942"
       },
       "djm": {
-        "found": 18,
-        "deleted": 0,
-        "last_found": "2025-06-12T14:50:50.848197"
+        "found": 48,
+        "deleted": 10,
+        "last_found": "2025-07-10T19:58:39.584108",
+        "last_deleted": "2025-07-10T19:58:39.585127"
       },
       "cdj 2000": {
-        "found": 16,
-        "deleted": 0,
-        "last_found": "2025-06-12T14:50:50.848197"
+        "found": 38,
+        "deleted": 4,
+        "last_found": "2025-07-10T19:58:41.527303",
+        "last_deleted": "2025-07-10T19:58:41.527816"
       },
       "xdj 1000": {
-        "found": 9,
-        "deleted": 0,
-        "last_found": "2025-06-12T14:50:50.848197"
+        "found": 20,
+        "deleted": 2,
+        "last_found": "2025-07-10T19:58:43.157784",
+        "last_deleted": "2025-07-10T19:58:43.158811"
       },
       "djm 900": {
-        "found": 5,
-        "deleted": 0,
-        "last_found": "2025-06-12T14:50:50.848197"
+        "found": 16,
+        "deleted": 2,
+        "last_found": "2025-07-10T19:58:44.898943",
+        "last_deleted": "2025-07-10T19:58:44.899974"
       }
     }
   },
   "system": {
-    "start_time": "2025-06-12T14:50:50.845106",
-    "uptime_seconds": 977,
-    "restarts": 232
+    "start_time": "2025-07-12T01:17:07.660150",
+    "uptime_seconds": 0,
+    "restarts": 233
   }
 }

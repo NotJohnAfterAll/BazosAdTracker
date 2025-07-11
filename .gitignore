@@ -31,6 +31,25 @@ ENV/
 instance/
 .webassets-cache
 
+# Database files (SQLite)
+*.db
+*.sqlite
+*.sqlite3
+data/*.db
+data/*.sqlite
+data/*.sqlite3
+
+# Database data and logs
+data/ads.json
+data/keywords.json
+data/stats.json
+data/scraper.log
+data/scheduler.log
+
+# Keep data directory structure but ignore contents
+data/*
+!data/.gitkeep
+
 # Logs
 *.log
 logs/

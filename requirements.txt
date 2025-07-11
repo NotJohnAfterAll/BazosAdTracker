@@ -13,3 +13,16 @@ python-engineio
 Werkzeug
 # HTTPS support (optional)
 pyOpenSSL
+# User authentication and database
+flask-sqlalchemy
+flask-migrate
+flask-login
+flask-bcrypt
+flask-jwt-extended
+flask-limiter
+sqlalchemy
+bcrypt
+cryptography
+# Production server
+gunicorn
+psycopg2-binary

@@ -10,6 +10,16 @@
         @error="handleImageError"
         @load="imageLoaded = true"
       />
+      <div v-else-if="imageError" class="w-full h-full flex flex-col items-center justify-center text-muted-foreground">
+        <i class="fas fa-exclamation-triangle fa-lg mb-2 text-yellow-500"></i>
+        <span class="text-xs mb-2">Image failed to load</span>
+        <button 
+          @click="retryImage" 
+          class="text-xs text-primary hover:underline"
+        >
+          Retry
+        </button>
+      </div>
       <div v-else class="w-full h-full flex items-center justify-center text-muted-foreground">
         <i class="fas fa-image fa-2x"></i>
       </div>
@@ -21,7 +31,7 @@
     <div class="p-4 flex flex-col flex-grow"><div class="flex justify-between items-start mb-2">
         <h3 class="font-semibold text-sm line-clamp-2 flex-1">{{ displayTitle }}</h3>
         <button
-          @click="$emit('favorite')"
+          @click="handleFavorite"
           :class="[
             'ml-2 flex-shrink-0',
             isFavorite ? 'text-yellow-500' : 'text-muted-foreground hover:text-yellow-500'
@@ -66,7 +76,8 @@ import { computed, ref } from 'vue'
 import Card from './ui/Card.vue'
 
 interface Ad {
-  id: string
+  id: string          // Bazos ad ID (string)
+  db_id?: number      // Database ID (for backend operations)
   title: string
   price: string
   description: string
@@ -77,6 +88,7 @@ interface Ad {
   date_added: string
   scraped_at: number
   isNew?: boolean
+  keyword?: string    // Associated keyword
 }
 
 interface Props {
@@ -86,12 +98,22 @@ interface Props {
 }
 
 const props = defineProps<Props>()
-defineEmits<{
-  favorite: []
+const emit = defineEmits<{
+  favorite: [ad: Ad]
 }>()
 
 const imageLoaded = ref(false)
 const imageError = ref(false)
+const retryCount = ref(0)
+const maxRetries = 2
+
+const handleFavorite = () => {
+  if (props.ad && props.ad.id) {
+    emit('favorite', props.ad)
+  } else {
+    console.error('Cannot favorite ad: missing ad or ad.id', props.ad)
+  }
+}
 
 const displayTitle = computed(() => {
   if (!props.ad.title || props.ad.title === 'Bazos.cz Advertisement' || props.ad.title === 'No title') {
@@ -121,8 +143,24 @@ const truncatedDescription = computed(() => {
 })
 
 const imageUrl = computed(() => {
-  // Prefer image_url over image field
-  return props.ad.image_url || props.ad.image
+  const originalUrl = props.ad.image_url || props.ad.image
+  
+  // If no image URL, return empty
+  if (!originalUrl || originalUrl === 'N/A' || originalUrl === '') {
+    return ''
+  }
+  
+  // If it's a relative URL or already from our domain, use as-is
+  if (originalUrl.startsWith('/') || originalUrl.includes(window.location.hostname)) {
+    return originalUrl
+  }
+  
+  // For external images, use the proxy to avoid CORS issues
+  if (originalUrl.startsWith('http://') || originalUrl.startsWith('https://')) {
+    return `/api/image-proxy?url=${encodeURIComponent(originalUrl)}`
+  }
+  
+  return originalUrl
 })
 
 const formatDate = (dateStr: string) => {
@@ -149,8 +187,30 @@ const formatDate = (dateStr: string) => {
 }
 
 const handleImageError = () => {
-  imageError.value = true
-  console.log('Image failed to load:', imageUrl.value)
+  console.log('Image failed to load:', imageUrl.value, `(retry ${retryCount.value}/${maxRetries})`)
+  
+  if (retryCount.value < maxRetries) {
+    retryCount.value++
+    console.log(`Retrying image load... (${retryCount.value}/${maxRetries})`)
+    
+    // Try to reload the image after a short delay
+    setTimeout(() => {
+      const img = document.querySelector(`[src="${imageUrl.value}"]`) as HTMLImageElement
+      if (img) {
+        img.src = imageUrl.value + `&retry=${retryCount.value}`
+      }
+    }, 1000 * retryCount.value) // Exponential backoff: 1s, 2s
+  } else {
+    imageError.value = true
+    console.log('Image failed to load after all retries:', imageUrl.value)
+  }
+}
+
+const retryImage = () => {
+  imageError.value = false
+  retryCount.value = 0
+  imageLoaded.value = false
+  console.log('Manual retry for image:', imageUrl.value)
 }
 </script>
 

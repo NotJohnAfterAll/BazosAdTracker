@@ -12,8 +12,9 @@
             @keyup.enter="handleAddKeyword"
             class="flex-1"
           />
-          <Button @click="handleAddKeyword" class="whitespace-nowrap">
-            <i class="fas fa-plus mr-2"></i> Add
+          <Button @click="handleAddKeyword" class="whitespace-nowrap" :disabled="loading">
+            <i :class="loading ? 'fas fa-spinner fa-spin mr-2' : 'fas fa-plus mr-2'"></i> 
+            {{ loading ? 'Adding...' : 'Add' }}
           </Button>
         </div>
       </div>
@@ -29,9 +30,11 @@
             <span>{{ keyword }}</span>
             <button
               @click="$emit('remove-keyword', keyword)"
-              class="ml-2 hover:text-primary-foreground/80"
+              :disabled="removeLoading === keyword"
+              class="ml-2 hover:text-primary-foreground/80 disabled:opacity-50"
+              :title="removeLoading === keyword ? 'Removing...' : 'Remove keyword'"
             >
-              <i class="fas fa-times text-xs"></i>
+              <i :class="removeLoading === keyword ? 'fas fa-spinner fa-spin text-xs' : 'fas fa-times text-xs'"></i>
             </button>
           </div>
           
@@ -52,6 +55,8 @@ import Button from './ui/Button.vue'
 
 interface Props {
   keywords: string[]
+  loading?: boolean
+  removeLoading?: string // keyword currently being removed
 }
 
 defineProps<Props>()

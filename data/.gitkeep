@@ -1,0 +1,3 @@
+# This file ensures the data directory is created in Git
+# The actual database and data files are ignored by .gitignore
+# but the directory structure is preserved for the application

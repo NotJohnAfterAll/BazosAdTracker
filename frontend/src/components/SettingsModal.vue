@@ -60,19 +60,19 @@
         <div class="bg-muted p-3 rounded">
           <div class="grid grid-cols-2 gap-y-2 text-sm">
             <div>Check Interval:</div>
-            <div class="text-right font-medium">5 minutes</div>
+            <div class="text-right font-medium">{{ stats.check_interval_minutes || 5 }} minutes</div>
             
             <div>Average Check Duration:</div>
-            <div class="text-right font-medium">{{ stats.avg_duration }} ms</div>
+            <div class="text-right font-medium">{{ stats.avg_duration > 0 ? `${stats.avg_duration} ms` : 'N/A' }}</div>
             
             <div>Total Checks:</div>
-            <div class="text-right font-medium">{{ stats.total_checks }}</div>
+            <div class="text-right font-medium">{{ stats.total_checks || 0 }}</div>
             
             <div>Total Ads Found:</div>
-            <div class="text-right font-medium">{{ stats.total_ads }}</div>
+            <div class="text-right font-medium">{{ stats.total_ads || 0 }}</div>
             
             <div>System Uptime:</div>
-            <div class="text-right font-medium">{{ stats.uptime }}</div>
+            <div class="text-right font-medium">{{ stats.uptime || '0s' }}</div>
           </div>
         </div>
       </div>
@@ -93,7 +93,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { computed } from 'vue'
 import Dialog from './ui/Dialog.vue'
 import Button from './ui/Button.vue'
 
@@ -102,6 +102,12 @@ interface Stats {
   total_ads: number
   uptime: string
   avg_duration: number
+  check_interval_minutes?: number
+  uptime_seconds?: number
+  active_keywords?: number
+  favorites_count?: number
+  check_interval?: number
+  last_check_at?: string
 }
 
 interface Props {

@@ -159,23 +159,9 @@ class StatsTracker:
         
         self.update_uptime()
         
-        # Calculate unique ads count from current data
-        try:
-            ads_file = "data/ads.json"
-            if os.path.exists(ads_file):
-                with open(ads_file, "r", encoding="utf-8-sig") as f:
-                    current_ads = json.load(f)
-                
-                unique_ads = set()
-                for keyword, ads in current_ads.items():
-                    for ad in ads:
-                        if isinstance(ad, dict) and 'id' in ad:
-                            unique_ads.add(ad['id'])
-                
-                # Update the stats with real-time unique count
-                self.stats["ads"]["total_found"] = len(unique_ads)
-        except Exception as e:
-            print(f"Error calculating unique ads count: {e}")
+        # Note: Unique ads count calculation from JSON files is deprecated
+        # The system now uses database storage, and individual user stats
+        # are managed by the UserService class
         
         return self.stats
     
@@ -188,9 +174,12 @@ class StatsTracker:
     
     def recalculate_stats_from_current_data(self, keywords_file="data/keywords.json", ads_file="data/ads.json"):
         """
-        Recalculate and reset stats based on current actual data in keywords.json and ads.json
-        This fixes discrepancies between accumulated stats and actual current state
+        DEPRECATED: Recalculate and reset stats based on JSON files
+        This method is kept for compatibility but should not be used.
+        The system now uses database storage and individual user stats.
         """
+        print("WARNING: recalculate_stats_from_current_data() is deprecated - system now uses database storage")
+        return
         try:
             # Load current keywords
             current_keywords = []

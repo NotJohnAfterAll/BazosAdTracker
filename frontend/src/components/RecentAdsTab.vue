@@ -17,11 +17,11 @@
     
     <div v-else class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3 mb-6">
       <AdCard
-        v-for="item in ads"
-        :key="item.ad.id"
-        :ad="item.ad"
-        :keyword="item.keyword"
-        @favorite="$emit('favorite', item.ad)"
+        v-for="ad in ads"
+        :key="ad.id"
+        :ad="ad"
+        :keyword="ad.keyword"
+        @favorite="$emit('favorite', ad)"
       />
     </div>
     
@@ -40,7 +40,8 @@ import Card from './ui/Card.vue'
 import AdCard from './AdCard.vue'
 
 interface Ad {
-  id: string
+  id: string          // Bazos ad ID (string)
+  db_id?: number      // Database ID (for backend operations)
   title: string
   price: string
   description: string
@@ -51,15 +52,11 @@ interface Ad {
   date_added: string
   scraped_at: number
   isNew?: boolean
-}
-
-interface KeywordAd {
-  keyword: string
-  ad: Ad
+  keyword?: string    // Associated keyword
 }
 
 interface Props {
-  ads: KeywordAd[]
+  ads: Ad[]
   loading: boolean
 }
 
