@@ -47,6 +47,16 @@ class AdScheduler:
         
         # Initialize Flask app and database context
         self.app = main_app.create_app()
+        
+        # Initialize the database with the app
+        db.init_app(self.app)
+        
+        with self.app.app_context():
+            # Ensure the database is initialized
+            db.create_all()
+            logger.info("✅ Database tables initialized")
+        
+        # Store app context for database operations
         self.app_context = self.app.app_context()
         self.app_context.push()
         
@@ -258,53 +268,55 @@ class AdScheduler:
         logger.info("Starting database-based ad check...")
         
         try:
-            # Get all active users
-            users = User.query.filter_by(is_active=True).all()
+            # Ensure we're in the application context for database operations
+            with self.app.app_context():
+                # Get all active users
+                users = User.query.filter_by(is_active=True).all()
             
-            if not users:
-                logger.info("No active users to check")
-                return
-            
-            total_new_ads = 0
-            total_deleted_ads = 0
-            total_users_with_changes = 0
-            
-            # Track performance
-            start_time = time.time()
-            
-            logger.info(f"Checking ads for {len(users)} active users")
-            
-            for user in users:
-                try:
-                    # Check ads for this user using UserService
-                    success, new_ads, deleted_ads = self.user_service.check_user_ads(user.id)
-                    
-                    if success:
-                        user_new_count = len(new_ads)
-                        user_deleted_count = len(deleted_ads)
+                if not users:
+                    logger.info("No active users to check")
+                    return
+                
+                total_new_ads = 0
+                total_deleted_ads = 0
+                total_users_with_changes = 0
+                
+                # Track performance
+                start_time = time.time()
+                
+                logger.info(f"Checking ads for {len(users)} active users")
+                
+                for user in users:
+                    try:
+                        # Check ads for this user using UserService
+                        success, new_ads, deleted_ads = self.user_service.check_user_ads(user.id)
                         
-                        total_new_ads += user_new_count
-                        total_deleted_ads += user_deleted_count
-                        
-                        if user_new_count > 0 or user_deleted_count > 0:
-                            total_users_with_changes += 1
-                            logger.info(f"User {user.username}: {user_new_count} new, {user_deleted_count} deleted ads")
-                        
-                    else:
-                        logger.error(f"Failed to check ads for user {user.username}")
-                        
-                except Exception as e:
-                    logger.error(f"Error checking ads for user {user.username}: {e}")
-                    continue
-            
-            # Record check duration with enhanced logging
-            check_duration_ms = int((time.time() - start_time) * 1000)
-            self.safe_record_check(check_duration_ms)
-            
-            logger.info(f"Check completed in {check_duration_ms}ms. Total: {total_new_ads} new ads, {total_deleted_ads} deleted ads across {total_users_with_changes} users")
-            
-            # Note: Individual user notifications are handled by the UserService
-            # The web app reads directly from the database, so no file-based notifications needed
+                        if success:
+                            user_new_count = len(new_ads)
+                            user_deleted_count = len(deleted_ads)
+                            
+                            total_new_ads += user_new_count
+                            total_deleted_ads += user_deleted_count
+                            
+                            if user_new_count > 0 or user_deleted_count > 0:
+                                total_users_with_changes += 1
+                                logger.info(f"User {user.username}: {user_new_count} new, {user_deleted_count} deleted ads")
+                            
+                        else:
+                            logger.error(f"Failed to check ads for user {user.username}")
+                            
+                    except Exception as e:
+                        logger.error(f"Error checking ads for user {user.username}: {e}")
+                        continue
+                
+                # Record check duration with enhanced logging
+                check_duration_ms = int((time.time() - start_time) * 1000)
+                self.safe_record_check(check_duration_ms)
+                
+                logger.info(f"Check completed in {check_duration_ms}ms. Total: {total_new_ads} new ads, {total_deleted_ads} deleted ads across {total_users_with_changes} users")
+                
+                # Note: Individual user notifications are handled by the UserService
+                # The web app reads directly from the database, so no file-based notifications needed
             
         except Exception as e:
             logger.error(f"Error in database ad check: {e}")
@@ -414,58 +426,64 @@ class AdScheduler:
     def cleanup_old_new_tags(self):
         """Clean up old NEW tags from the database"""
         try:
-            from datetime import datetime, timedelta, timezone
-            
-            # Clear "NEW" tags from ads older than 6 hours
-            # Use timezone-naive comparison since database stores timezone-naive datetimes
-            six_hours_ago = datetime.utcnow() - timedelta(hours=6)
-            
-            updated_count = UserAd.query.filter(
-                UserAd.is_new == True,
-                UserAd.marked_new_at < six_hours_ago
-            ).update({'is_new': False})
-            
-            if updated_count > 0:
-                db.session.commit()
-                logger.info(f"Cleaned up NEW tags from {updated_count} ads older than 6 hours")
+            with self.app.app_context():
+                from datetime import datetime, timedelta, timezone
+                
+                # Clear "NEW" tags from ads older than 6 hours
+                # Use timezone-naive comparison since database stores timezone-naive datetimes
+                six_hours_ago = datetime.utcnow() - timedelta(hours=6)
+                
+                updated_count = UserAd.query.filter(
+                    UserAd.is_new == True,
+                    UserAd.marked_new_at < six_hours_ago
+                ).update({'is_new': False})
+                
+                if updated_count > 0:
+                    db.session.commit()
+                    logger.info(f"Cleaned up NEW tags from {updated_count} ads older than 6 hours")
+                else:
+                    logger.info("✅ No old NEW tags to clean up")
             
         except Exception as e:
             logger.error(f"Error cleaning up old NEW tags: {e}")
-            db.session.rollback()
+            with self.app.app_context():
+                db.session.rollback()
 
     def cleanup_old_deleted_ads(self):
         """Permanently remove ads that have been marked as deleted for more than 30 days"""
         try:
-            from datetime import datetime, timedelta, timezone
-            
-            # Remove ads that have been deleted for more than 30 days
-            thirty_days_ago = datetime.now(timezone.utc) - timedelta(days=30)
-            
-            # Find ads marked as deleted for more than 30 days
-            old_deleted_ads = UserAd.query.filter(
-                UserAd.is_deleted == True,
-                UserAd.scraped_at < thirty_days_ago  # Using scraped_at as we don't have deleted_at
-            ).all()
-            
-            if old_deleted_ads:
-                count = len(old_deleted_ads)
+            with self.app.app_context():
+                from datetime import datetime, timedelta, timezone
                 
-                # Remove associated favorites first (to maintain foreign key integrity)
-                for ad in old_deleted_ads:
-                    UserFavorite.query.filter_by(ad_id=ad.id).delete()
+                # Remove ads that have been deleted for more than 30 days
+                thirty_days_ago = datetime.now(timezone.utc) - timedelta(days=30)
                 
-                # Remove the ads
-                for ad in old_deleted_ads:
-                    db.session.delete(ad)
+                # Find ads marked as deleted for more than 30 days
+                old_deleted_ads = UserAd.query.filter(
+                    UserAd.is_deleted == True,
+                    UserAd.scraped_at < thirty_days_ago  # Using scraped_at as we don't have deleted_at
+                ).all()
                 
-                db.session.commit()
-                logger.info(f"Permanently removed {count} ads that were deleted more than 30 days ago")
-            else:
-                logger.info("No old deleted ads to clean up")
+                if old_deleted_ads:
+                    count = len(old_deleted_ads)
+                    
+                    # Remove associated favorites first (to maintain foreign key integrity)
+                    for ad in old_deleted_ads:
+                        UserFavorite.query.filter_by(ad_id=ad.id).delete()
+                    
+                    # Remove the ads
+                    for ad in old_deleted_ads:
+                        db.session.delete(ad)
+                    
+                    db.session.commit()
+                    logger.info(f"Permanently removed {count} ads that were deleted more than 30 days ago")
+                else:
+                    logger.info("No old deleted ads to clean up")
                 
         except Exception as e:
             logger.error(f"Error cleaning up old deleted ads: {e}")
-            db.session.rollback()
+            with self.app.app_context():
+                db.session.rollback()
 
     def run(self):
         """Main scheduler loop"""
