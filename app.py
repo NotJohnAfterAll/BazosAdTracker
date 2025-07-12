@@ -178,6 +178,11 @@ print("App initialization complete.")
 KEYWORDS_FILE = 'data/keywords.json'  # Keep defined for migration/cleanup code
 ADS_FILE = 'data/ads.json'  # Keep defined for migration/cleanup code
 
+# DEPRECATED: Global variables for old JSON-based system
+# Initialize as empty to prevent NameError, but these are no longer used
+keywords = []
+all_ads = {}
+
 # Ensure data directory exists
 os.makedirs('data', exist_ok=True)
 
@@ -436,10 +441,12 @@ def index():
             "frontend": "Vue.js frontend not found - run 'npm run build' in frontend/",
             "endpoints": {
                 "health": "/api/health",
-                "keywords": "/api/keywords",
-                "recent_ads": "/api/recent-ads",
+                "auth": "/api/auth/*",
+                "user_data": "/api/user/*",
+                "deprecated_keywords": "/api/keywords (DEPRECATED)",
+                "deprecated_recent_ads": "/api/recent-ads (DEPRECATED)",
+                "deprecated_manual_check": "/api/manual-check (DEPRECATED)",
                 "stats": "/api/stats",
-                "manual_check": "/api/manual-check",
                 "notifications": "/api/notifications",
                 "api_info": "/api/info"
             }
@@ -454,10 +461,12 @@ def api_info():
         "frontend": "Vue.js (served at /)",
         "endpoints": {
             "health": "/api/health",
-            "keywords": "/api/keywords",
-            "recent_ads": "/api/recent-ads",
+            "auth": "/api/auth/* (login, register, etc.)",
+            "user_data": "/api/user/* (keywords, ads, favorites, stats)",
+            "deprecated_keywords": "/api/keywords (DEPRECATED - use /api/user/keywords)",
+            "deprecated_recent_ads": "/api/recent-ads (DEPRECATED - use /api/user/recent-ads)",
+            "deprecated_manual_check": "/api/manual-check (DEPRECATED - use /api/user/manual-check)",
             "stats": "/api/stats",
-            "manual_check": "/api/manual-check",
             "notifications": "/api/notifications"
         },
         "websocket": "Socket.IO supported",
@@ -604,117 +613,25 @@ def delete_keyword(keyword):
 
 @app.route('/api/ads')
 def get_ads():
-    global all_ads
-    keyword = request.args.get('keyword')
-    print(f"API /ads called with keyword='{keyword}', all_ads has {len(all_ads)} keyword groups")
+    """DEPRECATED: Old global ads endpoint"""
+    print("OLD /api/ads ENDPOINT CALLED - DEPRECATED")
+    print("This endpoint is deprecated. Use /api/user/ads instead")
     
-    if not all_ads:
-        print("WARNING: all_ads is empty, trying to reload from file")
-        all_ads = load_ads()
-        print(f"Reloaded {len(all_ads)} keyword groups")
-    
-    if keyword and keyword in all_ads:
-        # Get ads for a specific keyword
-        ads_to_return = all_ads[keyword]
-        print(f"Returning {len(ads_to_return)} ads for keyword '{keyword}'")
-        
-        # Check for ads with default/placeholder titles and try to get more details
-        for ad in ads_to_return:
-            if ('title' not in ad or not ad['title'] or ad['title'] == "Bazos.cz Advertisement" or
-                'seller_name' not in ad or not ad['seller_name'] or ad['seller_name'] == "Bazos User"):
-                if ad.get('link'):
-                    try:
-                        details = scraper.get_ad_details(ad['link'])
-                        if details and 'title' in details and details['title'] and details['title'] != "No title":
-                            ad['title'] = details['title']
-                        if details and 'seller_name' in details and details['seller_name'] and details['seller_name'] != "Unknown seller":
-                            ad['seller_name'] = details['seller_name']
-                    except Exception as e:
-                        print(f"Error fetching details for ad {ad.get('id', 'unknown')}: {e}")
-                        
-        return jsonify({'ads': ads_to_return})
-    
-    # Return all ads
-    print(f"Returning all ads: {len(all_ads)} keyword groups")
-    return jsonify({'ads': all_ads})
+    return jsonify({
+        'error': 'This endpoint is deprecated. Please use /api/user/ads',
+        'ads': {}
+    }), 410  # Gone status
 
 @app.route('/api/recent-ads')
 def get_recent_ads():
-    global all_ads
-    print(f"API /recent-ads called. all_ads has {len(all_ads)} keyword groups")
+    """DEPRECATED: Old global recent ads endpoint"""
+    print("OLD /api/recent-ads ENDPOINT CALLED - DEPRECATED")
+    print("This endpoint is deprecated. Use /api/user/recent-ads instead")
     
-    all_recent_ads = []
-    seen_ad_ids = set()  # Track ad IDs to prevent duplicates
-    
-    if not all_ads:
-        print("WARNING: all_ads is empty, trying to reload from file")
-        all_ads = load_ads()
-        print(f"Reloaded {len(all_ads)} keyword groups")
-    
-    for keyword, ads in all_ads.items():
-        print(f"Processing keyword '{keyword}' with {len(ads)} ads")
-        for ad in ads[:5]:  # Get 5 most recent ads per keyword
-            # Clean up the ad data if needed
-            if 'title' in ad and (not ad['title'] or ad['title'] == "Bazos.cz Advertisement"):
-                # Try to get more details about the ad
-                if ad.get('link'):
-                    try:
-                        details = scraper.get_ad_details(ad['link'])
-                        if details and 'title' in details and details['title'] and details['title'] != "No title":
-                            ad['title'] = details['title']
-                        if details and 'seller_name' in details and details['seller_name'] and details['seller_name'] != "Unknown seller":
-                            ad['seller_name'] = details['seller_name']
-                    except Exception as e:
-                        print(f"Error fetching details for ad {ad.get('id', 'unknown')}: {e}")
-            
-            # Only add if we haven't seen this ad ID before
-            if ad['id'] not in seen_ad_ids:
-                seen_ad_ids.add(ad['id'])
-                all_recent_ads.append({
-                    'keyword': keyword,
-                    'ad': ad
-                })    
-    
-    print(f"API /recent-ads returning {len(all_recent_ads)} ads")
-    
-    # Sort by date_added (actual ad posting date) if available, otherwise fall back to scraped_at
-    def get_sort_key(item):
-        ad = item['ad']
-        
-        # First priority: use date_added (actual posting date from Bazos)
-        if ad.get('date_added') and ad['date_added'] != 'N/A':
-            try:
-                # Parse Czech date format like "8.6. 2025" or "7.6. 2025"
-                date_str = ad['date_added'].strip()
-                # Handle formats like "8.6. 2025" or "8.6.2025"
-                if '.' in date_str:
-                    parts = date_str.replace(' ', '').split('.')
-                    if len(parts) >= 3:
-                        day = int(parts[0])
-                        month = int(parts[1])
-                        year = int(parts[2]) if parts[2] else 2025  # Default to current year
-                        # Return timestamp for sorting (more recent = higher number for reverse=True)
-                        return datetime(year, month, day).timestamp()
-            except (ValueError, IndexError):
-                pass
-        
-        # Second priority: use scraped_at timestamp
-        if ad.get('scraped_at'):
-            return ad['scraped_at']
-        
-        # Fallback: use parsed date field
-        if ad.get('date'):
-            try:
-                return datetime.strptime(ad['date'], '%Y-%m-%d %H:%M:%S').timestamp()
-            except:
-                pass
-        
-        # Last resort: return 0 (oldest)
-        return 0
-    
-    all_recent_ads.sort(key=get_sort_key, reverse=True)
-    
-    return jsonify({'ads': all_recent_ads[:20]})  # Return top 20 recent ads
+    return jsonify({
+        'error': 'This endpoint is deprecated. Please use /api/user/recent-ads',
+        'ads': []
+    }), 410  # Gone status
 
 @app.route('/api/stats')
 def get_system_stats():
@@ -1157,11 +1074,25 @@ def get_user_recent_ads():
     """Get user recent ads"""
     try:
         user_id = g.current_user.id
-        ads = user_service.get_user_recent_ads(user_id)
+        
+        # Get optional limit parameter (default to 100, max 500)
+        limit = request.args.get('limit', 100, type=int)
+        limit = min(max(limit, 10), 500)  # Clamp between 10 and 500
+        
+        # Get optional include_deleted parameter
+        include_deleted = request.args.get('include_deleted', 'false').lower() == 'true'
+        
+        logger.info(f"Getting recent ads for user {user_id} (limit: {limit}, include_deleted: {include_deleted})")
+        
+        ads = user_service.get_user_recent_ads(user_id, limit=limit, include_deleted=include_deleted)
+        logger.info(f"Retrieved {len(ads)} recent ads for user {user_id}")
+        
         return jsonify({'success': True, 'ads': ads}), 200
         
     except Exception as e:
         logger.error(f"Get user recent ads error: {e}")
+        import traceback
+        logger.error(f"Traceback: {traceback.format_exc()}")
         return jsonify({'success': False, 'error': 'Failed to get recent ads'}), 500
 
 @app.route('/api/user/favorites', methods=['GET', 'POST'])
@@ -1406,6 +1337,36 @@ def catch_all(path):
             "path_requested": path
         }), 404
 
+def cleanup_old_new_tags_on_startup():
+    """Clean up old NEW tags when the application starts"""
+    try:
+        with app.app_context():
+            from datetime import datetime, timedelta, timezone
+            from app.models import UserAd, db
+            
+            # Clear "NEW" tags from ads older than 6 hours
+            # Use timezone-naive comparison since database stores timezone-naive datetimes
+            six_hours_ago = datetime.utcnow() - timedelta(hours=6)
+            
+            updated_count = UserAd.query.filter(
+                UserAd.is_new == True,
+                UserAd.marked_new_at < six_hours_ago
+            ).update({'is_new': False})
+            
+            if updated_count > 0:
+                db.session.commit()
+                print(f"🧹 Cleaned up NEW tags from {updated_count} ads older than 6 hours on startup")
+            else:
+                print("✅ No old NEW tags to clean up")
+        
+    except Exception as e:
+        print(f"❌ Error cleaning up old NEW tags on startup: {e}")
+        try:
+            with app.app_context():
+                db.session.rollback()
+        except:
+            pass
+
 if __name__ == '__main__':
     # Get port and host from environment variables (Coolify compatibility)
     port = int(os.getenv('PORT', 5000))
@@ -1418,6 +1379,9 @@ if __name__ == '__main__':
     print(f"   Environment: {'Production' if is_production else 'Development'}")
     print(f"   Server: {'Gunicorn' if is_gunicorn else 'Flask Dev Server'}")
     print(f"   Host: {host}:{port}")
+    
+    # Clean up old NEW tags on startup
+    cleanup_old_new_tags_on_startup()
     
     # Start file monitoring for production (to detect scheduler updates)
     if is_production or is_gunicorn:

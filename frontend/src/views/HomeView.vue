@@ -45,7 +45,11 @@
           v-if="activeTab === 'recent'"
           :ads="recentAds"
           :loading="loadingRecent"
+          :limit="recentAdsLimit"
+          :include-deleted="includeDeletedAds"
           @favorite="handleFavorite"
+          @limit-change="handleLimitChange"
+          @deleted-toggle="handleDeletedToggle"
         />
 
         <!-- Keywords Tab -->
@@ -165,6 +169,10 @@ const notificationsEnabled = ref(false)
 const soundEnabled = ref(false)
 const isDarkMode = ref(false)
 
+// Recent ads controls
+const recentAdsLimit = ref(100)
+const includeDeletedAds = ref(false)
+
 // Socket connection
 let socket: Socket | null = null
 
@@ -190,9 +198,16 @@ const fetchKeywords = async () => {
 const fetchRecentAds = async (cacheBust = false) => {
   loadingRecent.value = true
   try {
-    const url = cacheBust ? 
-      `/api/user/recent-ads?_t=${Date.now()}` : 
-      '/api/user/recent-ads'
+    // Build URL with parameters
+    const params = new URLSearchParams()
+    params.append('limit', recentAdsLimit.value.toString())
+    params.append('include_deleted', includeDeletedAds.value.toString())
+    
+    if (cacheBust) {
+      params.append('_t', Date.now().toString())
+    }
+    
+    const url = `/api/user/recent-ads?${params.toString()}`
     
     const response = await authStore.apiRequest(url)
     const data = await response.json()
@@ -201,7 +216,7 @@ const fetchRecentAds = async (cacheBust = false) => {
       // Ensure we have an array and each ad has required properties
       recentAds.value = (data.ads || []).filter((ad: any) => ad && ad.id)
       if (cacheBust) {
-        console.log(`📡 Fetched ${recentAds.value.length} recent ads with cache-busting`)
+        console.log(`📡 Fetched ${recentAds.value.length} recent ads with cache-busting (limit: ${recentAdsLimit.value}, deleted: ${includeDeletedAds.value})`)
       }
     } else {
       console.error('Failed to fetch recent ads:', data.error)
@@ -552,4 +567,14 @@ onUnmounted(() => {
     socket.disconnect()
   }
 })
+
+const handleLimitChange = (newLimit: number) => {
+  recentAdsLimit.value = newLimit
+  fetchRecentAds(true) // Force refresh with new limit
+}
+
+const handleDeletedToggle = (includeDeleted: boolean) => {
+  includeDeletedAds.value = includeDeleted
+  fetchRecentAds(true) // Force refresh with new setting
+}
 </script>

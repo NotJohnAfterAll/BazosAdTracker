@@ -1,6 +1,36 @@
 <template>
   <section>
-    <h2 class="text-xl font-semibold mb-4">Recent Advertisements</h2>
+    <div class="flex justify-between items-center mb-4">
+      <h2 class="text-xl font-semibold">Recent Advertisements</h2>
+      
+      <!-- Controls -->
+      <div class="flex items-center space-x-4">
+        <div class="flex items-center space-x-2">
+          <label class="text-sm text-muted-foreground">Show:</label>
+          <select 
+            :value="limit" 
+            @change="$emit('limit-change', parseInt(($event.target as HTMLSelectElement).value))"
+            class="text-sm border rounded px-2 py-1 bg-background"
+          >
+            <option value="50">50 ads</option>
+            <option value="100">100 ads</option>
+            <option value="200">200 ads</option>
+            <option value="500">All ads</option>
+          </select>
+        </div>
+        
+        <div class="flex items-center space-x-2">
+          <input 
+            type="checkbox" 
+            id="show-deleted"
+            :checked="includeDeleted"
+            @change="$emit('deleted-toggle', ($event.target as HTMLInputElement).checked)"
+            class="rounded"
+          />
+          <label for="show-deleted" class="text-sm text-muted-foreground">Show deleted</label>
+        </div>
+      </div>
+    </div>
     
     <div v-if="loading" class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3">
       <!-- Skeleton loading -->
@@ -52,16 +82,21 @@ interface Ad {
   date_added: string
   scraped_at: number
   isNew?: boolean
+  is_deleted?: boolean  // Whether the ad has been deleted
   keyword?: string    // Associated keyword
 }
 
 interface Props {
   ads: Ad[]
   loading: boolean
+  limit: number
+  includeDeleted: boolean
 }
 
 defineProps<Props>()
 defineEmits<{
   favorite: [ad: Ad]
+  'limit-change': [limit: number]
+  'deleted-toggle': [includeDeleted: boolean]
 }>()
 </script>

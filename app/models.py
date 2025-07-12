@@ -145,6 +145,14 @@ class UserAd(db.Model):
         return None
 
     def to_dict(self):
+        # Calculate if ad is still "new" based on time elapsed (6 hours)
+        is_currently_new = False
+        if self.is_new and self.marked_new_at:
+            from datetime import datetime, timedelta, timezone
+            # Use timezone-naive comparison since database stores timezone-naive datetimes
+            six_hours_ago = datetime.utcnow() - timedelta(hours=6)
+            is_currently_new = self.marked_new_at >= six_hours_ago
+        
         return {
             'id': self.ad_id,  # Use ad_id as the primary identifier for frontend
             'db_id': self.id,  # Keep database ID for backend operations
@@ -158,8 +166,8 @@ class UserAd(db.Model):
             'image_url': self.image_url,
             'date_added': self.date_added,
             'scraped_at': int(self.scraped_at.timestamp()) if self.scraped_at else None,
-            'isNew': self.is_new,  # Map is_new to isNew for frontend
-            'is_new': self.is_new,
+            'isNew': is_currently_new,  # Time-based NEW calculation for frontend
+            'is_new': is_currently_new,  # Also provide snake_case version
             'is_deleted': self.is_deleted,
             'keyword': self.keyword.keyword if self.keyword else None
         }

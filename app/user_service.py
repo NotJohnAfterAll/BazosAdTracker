@@ -4,7 +4,7 @@ User service for handling user-specific operations
 import json
 import os
 import time
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from app.models import db, User, UserKeyword, UserAd, UserFavorite, UserStats
 from app.utils.bazos_scraper_fixed import BazosScraper
 import logging
@@ -169,22 +169,25 @@ class UserService:
         ads = query.order_by(UserAd.scraped_at.desc()).all()
         return [ad.to_dict() for ad in ads]
     
-    def get_user_recent_ads(self, user_id, limit=20):
+    def get_user_recent_ads(self, user_id, limit=100, include_deleted=False):
         """Get recent ads for a user, sorted by newest first (by posting date, then scrape time)"""
         def _get_ads():
-            ads = UserAd.query.filter_by(
-                user_id=user_id,
-                is_deleted=False
-            ).order_by(
+            query = UserAd.query.filter_by(user_id=user_id)
+            
+            if not include_deleted:
+                query = query.filter_by(is_deleted=False)
+            
+            ads = query.order_by(
                 UserAd.date_added_parsed.desc().nulls_last(),
                 UserAd.scraped_at.desc(),
                 UserAd.id.desc()
             ).limit(limit).all()
+            
             return [ad.to_dict() for ad in ads]
         
         try:
             result = retry_db_operation(_get_ads)
-            logger.info(f"Retrieved {len(result)} recent ads for user {user_id}")
+            logger.info(f"Retrieved {len(result)} recent ads for user {user_id} (limit: {limit}, include_deleted: {include_deleted})")
             return result
         except Exception as e:
             logger.error(f"Failed to get recent ads for user {user_id}: {e}")
@@ -343,7 +346,7 @@ class UserService:
             
             # Clear "NEW" tags from ads older than 6 hours
             # This gives users time to see new ads without them disappearing immediately
-            six_hours_ago = datetime.utcnow() - timedelta(hours=6)
+            six_hours_ago = datetime.now(timezone.utc) - timedelta(hours=6)
             old_new_ads = UserAd.query.filter(
                 UserAd.user_id == user_id,
                 UserAd.is_new == True,
@@ -372,24 +375,60 @@ class UserService:
                     logger.error(f"Failed to scrape ads for keyword '{keyword}': {e}")
                     continue
                 
-                # Get existing ads for this keyword
-                
+                # Get existing ads for this keyword (including deleted ones for resurrection logic)
                 existing_ads = UserAd.query.filter_by(
                     user_id=user_id,
                     keyword_id=keyword_obj.id,
                     is_deleted=False
                 ).all()
                 
+                # Also get deleted ads for this keyword to check for resurrection
+                deleted_ads_for_keyword = UserAd.query.filter_by(
+                    user_id=user_id,
+                    keyword_id=keyword_obj.id,
+                    is_deleted=True
+                ).all()
+                
                 existing_ad_ids = {ad.ad_id for ad in existing_ads}
                 current_ad_ids = {ad['id'] for ad in current_ads}
+                deleted_ad_ids_for_keyword = {ad.ad_id for ad in deleted_ads_for_keyword}
                 
-                # Find new ads
+                # Find ads to resurrect (were deleted but found again)
+                resurrected_ad_ids = deleted_ad_ids_for_keyword & current_ad_ids
+                
+                # Resurrect deleted ads that are found again
+                for deleted_ad in deleted_ads_for_keyword:
+                    if deleted_ad.ad_id in resurrected_ad_ids:
+                        logger.info(f"Resurrecting ad {deleted_ad.ad_id} for keyword '{keyword}'")
+                        deleted_ad.is_deleted = False
+                        deleted_ad.is_new = True
+                        deleted_ad.marked_new_at = datetime.utcnow()
+                        deleted_ad.scraped_at = datetime.utcnow()
+                        
+                        # Update ad data with current scraper results
+                        current_ad_data = next((ad for ad in current_ads if ad['id'] == deleted_ad.ad_id), None)
+                        if current_ad_data:
+                            deleted_ad.title = current_ad_data.get('title', deleted_ad.title)
+                            deleted_ad.description = current_ad_data.get('description', deleted_ad.description)
+                            deleted_ad.price = current_ad_data.get('price', deleted_ad.price)
+                            deleted_ad.link = current_ad_data.get('link', deleted_ad.link)
+                            deleted_ad.image_url = current_ad_data.get('image_url', deleted_ad.image_url)
+                            deleted_ad.date_added = current_ad_data.get('date_added', deleted_ad.date_added)
+                            deleted_ad.date_added_parsed = UserAd.parse_czech_date(current_ad_data.get('date_added', ''))
+                        
+                        new_ads.append({
+                            'keyword': keyword,
+                            'ad': current_ad_data or deleted_ad.to_dict()
+                        })
+                
+                # Update existing_ad_ids to include resurrected ads
+                existing_ad_ids.update(resurrected_ad_ids)
+                
+                # Find new ads (in current results but not in existing or resurrected)
                 new_ad_ids = current_ad_ids - existing_ad_ids
                 
                 for ad_data in current_ads:
                     if ad_data['id'] in new_ad_ids:
-                        
-                        
                         # Check if this ad already exists for this user (from other keywords)
                         existing_user_ad = UserAd.query.filter_by(
                             user_id=user_id,
@@ -397,7 +436,7 @@ class UserService:
                         ).first()
                         
                         if existing_user_ad:
-                            
+                            # Ad exists for another keyword, skip creating duplicate
                             continue
                             
                         
@@ -427,10 +466,11 @@ class UserService:
                             'ad': ad_data
                         })
                 
-                # Find deleted ads
+                # Find deleted ads (active ads that are no longer in current results)
                 deleted_ad_ids = existing_ad_ids - current_ad_ids
                 for ad in existing_ads:
                     if ad.ad_id in deleted_ad_ids:
+                        logger.info(f"Marking ad {ad.ad_id} as deleted for keyword '{keyword}'")
                         ad.is_deleted = True
                         deleted_ads.append({
                             'keyword': keyword,

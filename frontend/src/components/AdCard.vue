@@ -1,12 +1,12 @@
 <template>  <Card 
-    :class="'ad-card-transition overflow-hidden flex flex-col h-full' + (ad.isNew ? ' notification-badge ring-2 ring-primary' : '')"
+    :class="cardClasses"
   >    <!-- Image -->
     <div class="h-40 bg-muted relative overflow-hidden">
       <img
         v-if="imageUrl && imageUrl !== 'N/A' && imageUrl !== '' && !imageError"
         :src="imageUrl"
         :alt="ad.title"
-        class="w-full h-full object-cover"
+        :class="imageClasses"
         @error="handleImageError"
         @load="imageLoaded = true"
       />
@@ -23,9 +23,15 @@
       <div v-else class="w-full h-full flex items-center justify-center text-muted-foreground">
         <i class="fas fa-image fa-2x"></i>
       </div>
-        <!-- New badge -->
-      <div v-if="ad.isNew" class="absolute top-2 right-2 bg-primary text-primary-foreground text-xs px-2 py-1 rounded-full font-semibold">
-        NEW
+      
+      <!-- Badges -->
+      <div class="absolute top-2 right-2 flex flex-col space-y-1">
+        <div v-if="ad.isNew" class="bg-primary text-primary-foreground text-xs px-2 py-1 rounded-full font-semibold">
+          NEW
+        </div>
+        <div v-if="ad.is_deleted" class="bg-red-500 text-white text-xs px-2 py-1 rounded-full font-semibold">
+          DELETED
+        </div>
       </div>
     </div>    <!-- Content -->
     <div class="p-4 flex flex-col flex-grow"><div class="flex justify-between items-start mb-2">
@@ -88,6 +94,7 @@ interface Ad {
   date_added: string
   scraped_at: number
   isNew?: boolean
+  is_deleted?: boolean  // Whether the ad has been deleted
   keyword?: string    // Associated keyword
 }
 
@@ -212,6 +219,30 @@ const retryImage = () => {
   imageLoaded.value = false
   console.log('Manual retry for image:', imageUrl.value)
 }
+
+const cardClasses = computed(() => {
+  const classes = ['ad-card-transition', 'overflow-hidden', 'flex', 'flex-col', 'h-full']
+  
+  if (props.ad.isNew) {
+    classes.push('notification-badge', 'ring-2', 'ring-primary')
+  }
+  
+  if (props.ad.is_deleted) {
+    classes.push('opacity-60', 'border-red-200', 'dark:border-red-800')
+  }
+  
+  return classes.join(' ')
+})
+
+const imageClasses = computed(() => {
+  const classes = ['w-full', 'h-full', 'object-cover']
+  
+  if (props.ad.is_deleted) {
+    classes.push('grayscale')
+  }
+  
+  return classes.join(' ')
+})
 </script>
 
 <style scoped>
