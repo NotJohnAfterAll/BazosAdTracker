@@ -9,10 +9,9 @@ echo "🚀 Starting BazosChecker deployment..."
 echo "📦 Installing Python dependencies..."
 pip install -r requirements.txt
 
-# Test PostgreSQL support
-echo "🔍 Testing PostgreSQL support..."
-python -c "import psycopg2; print('✅ psycopg2 available')" 2>/dev/null || echo "⚠️ psycopg2 not available - SQLite will be used"
-python -c "import sqlalchemy.dialects.postgresql; print('✅ PostgreSQL dialect available')" 2>/dev/null || echo "⚠️ PostgreSQL dialect not available"
+# Setup and validate PostgreSQL support
+echo "� Setting up PostgreSQL support..."
+python setup_postgres.py || echo "⚠️ PostgreSQL setup encountered issues"
 
 # Run comprehensive PostgreSQL test
 echo "🧪 Running PostgreSQL connectivity test..."

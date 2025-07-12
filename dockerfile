@@ -64,14 +64,12 @@ RUN apt-get update && apt-get install -y \
 # Copy and install Python dependencies
 COPY requirements.txt .
 RUN pip install --no-cache-dir --upgrade pip && \
-    pip install --no-cache-dir -r requirements.txt && \
-    python -c "import psycopg2; print('✅ PostgreSQL support installed')" || \
-    (echo "❌ PostgreSQL support installation failed" && exit 1)
+    pip install --no-cache-dir -r requirements.txt
 
-# Copy application code and test PostgreSQL setup
+# Copy application code and setup PostgreSQL support
 COPY . .
-RUN python test_postgres.py || \
-    (echo "❌ PostgreSQL connectivity test failed" && exit 1)
+RUN python setup_postgres.py && \
+    echo "✅ PostgreSQL setup completed successfully"
 
 # Copy built frontend from previous stage to serve as static files
 COPY --from=frontend-builder /app/frontend/dist ./frontend/dist
@@ -91,5 +89,5 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
 # Expose the port (Coolify will map this automatically)
 EXPOSE ${PORT:-5000}
 
-# Use simple shell script to manage both processes
-CMD ["./start.sh"]
+# Use startup script to handle PostgreSQL pre-loading
+CMD ["python", "startup.py"]

@@ -36,7 +36,7 @@ from utils.stats_tracker import StatsTracker
 
 import threading
 
-# Set up logging
+# Set up logging early
 logging.basicConfig(
     level=logging.DEBUG,
     filename='data/scraper.log',
@@ -44,6 +44,15 @@ logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger(__name__)
+
+# Explicitly import PostgreSQL support early to ensure availability
+try:
+    import psycopg2
+    import sqlalchemy.dialects.postgresql
+    import sqlalchemy.dialects.postgresql.psycopg2
+    logger.info("✅ PostgreSQL support modules imported successfully")
+except ImportError as e:
+    logger.warning(f"⚠️ PostgreSQL support not available: {e}")
 
 # Threading lock to prevent concurrent database operations
 check_in_progress = threading.Lock()
@@ -90,26 +99,44 @@ def test_database_connection():
     try:
         # Test PostgreSQL dialect availability
         if database_url and 'postgresql' in database_url:
-            import sqlalchemy.dialects.postgresql
-            logger.info("✅ PostgreSQL dialect loaded successfully")
+            # Explicitly import and register PostgreSQL dialect
+            try:
+                import psycopg2
+                logger.info(f"✅ psycopg2 driver available: {psycopg2.__version__}")
+            except ImportError as e:
+                logger.error(f"❌ psycopg2 import failed: {e}")
+                raise
             
-            # Test psycopg2 availability
-            import psycopg2
-            logger.info(f"✅ psycopg2 driver available: {psycopg2.__version__}")
+            try:
+                import sqlalchemy.dialects.postgresql
+                # Explicitly register the dialect
+                from sqlalchemy.dialects import registry
+                registry.register("postgresql", "sqlalchemy.dialects.postgresql", "dialect")
+                registry.register("postgresql.psycopg2", "sqlalchemy.dialects.postgresql.psycopg2", "dialect")
+                logger.info("✅ PostgreSQL dialect loaded and registered successfully")
+            except ImportError as e:
+                logger.error(f"❌ PostgreSQL dialect import failed: {e}")
+                raise
+            
+            # Test engine creation with the actual URL
+            try:
+                from sqlalchemy import create_engine
+                test_engine = create_engine(database_url, strategy='mock', executor=lambda sql, *_: None)
+                logger.info("✅ PostgreSQL engine creation test successful")
+            except Exception as e:
+                logger.error(f"❌ PostgreSQL engine creation failed: {e}")
+                raise
             
         return True
-    except ImportError as e:
-        logger.error(f"❌ Database driver import failed: {e}")
+    except (ImportError, Exception) as e:
+        logger.error(f"❌ Database driver/dialect error: {e}")
         if database_url and 'postgresql' in database_url:
-            logger.error("🔄 PostgreSQL driver missing, falling back to SQLite")
+            logger.error("🔄 PostgreSQL setup failed, falling back to SQLite")
             # Fallback to SQLite
             base_dir = os.path.abspath(os.path.dirname(__file__))
             db_path = os.path.join(base_dir, 'data', 'bazos_checker.db')
             app.config['SQLALCHEMY_DATABASE_URI'] = f'sqlite:///{db_path}?timeout=20'
             logger.info(f"✅ Fallback to SQLite: {db_path}")
-        return False
-    except Exception as e:
-        logger.error(f"❌ Database connection test failed: {e}")
         return False
 
 # Run database connection test
