@@ -50,6 +50,20 @@ def main():
         
         print("Scheduler module loaded and executed successfully")
         
+        # Now manually start the scheduler since __name__ != '__main__'
+        scheduler = main_scheduler.AdScheduler()
+        try:
+            scheduler.run()
+        except Exception as e:
+            print(f"Fatal error in scheduler: {e}")
+            import traceback
+            traceback.print_exc()
+            sys.exit(1)
+        finally:
+            # Ensure cleanup happens
+            if hasattr(scheduler, 'app_context'):
+                scheduler.app_context.pop()
+        
     except Exception as e:
         print(f"Error running scheduler.py: {e}")
         import traceback

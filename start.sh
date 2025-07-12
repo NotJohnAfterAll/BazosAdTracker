@@ -59,7 +59,12 @@ echo "   - DATABASE_URL: ${DATABASE_URL:-'SQLite (development)'}"
 # Function to handle cleanup on exit
 cleanup() {
     echo "🛑 Shutting down processes..."
-    kill $SCHEDULER_PID $FLASK_PID 2>/dev/null
+    if [ -n "$SCHEDULER_PID" ]; then
+        kill $SCHEDULER_PID 2>/dev/null
+    fi
+    if [ -n "$FLASK_PID" ]; then
+        kill $FLASK_PID 2>/dev/null
+    fi
     exit 0
 }
 
@@ -72,6 +77,9 @@ if [ "$FLASK_ENV" = "production" ]; then
     python run_scheduler.py 2>&1 | tee logs/scheduler.log &
     SCHEDULER_PID=$!
     echo "Scheduler started with PID: $SCHEDULER_PID"
+else
+    echo "Development mode: Scheduler will be managed by Flask app"
+    SCHEDULER_PID=""
 fi
 
 # Wait a moment for scheduler to initialize
@@ -85,8 +93,8 @@ echo "Flask app started with PID: $FLASK_PID"
 
 # Wait for both processes and restart if they crash
 while true; do
-    # Check if scheduler is still running
-    if ! kill -0 $SCHEDULER_PID 2>/dev/null; then
+    # Check if scheduler is still running (only if scheduler was started)
+    if [ -n "$SCHEDULER_PID" ] && ! kill -0 $SCHEDULER_PID 2>/dev/null; then
         echo "Scheduler crashed, restarting..."
         python run_scheduler.py 2>&1 | tee logs/scheduler.log &
         SCHEDULER_PID=$!
