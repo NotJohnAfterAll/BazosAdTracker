@@ -63,9 +63,15 @@ def ensure_postgresql_support():
         registry.register("postgresql", "sqlalchemy.dialects.postgresql", "dialect")
         registry.register("postgresql.psycopg2", "sqlalchemy.dialects.postgresql.psycopg2", "dialect")
         
-        # Test engine creation
+        # Test engine creation with newer API
         test_url = "postgresql://user:pass@localhost/test"
-        engine = create_engine(test_url, strategy='mock', executor=lambda sql, *_: None)
+        try:
+            from sqlalchemy.testing.engines import mock
+            engine = mock.create_mock_engine(test_url, executor=lambda sql, *_: None)
+        except ImportError:
+            # Fallback to older API if mock is not available
+            engine = create_engine(test_url, strategy='mock', executor=lambda sql, *_: None)
+        
         print("✅ PostgreSQL engine creation successful")
     except Exception as e:
         print(f"❌ Engine creation failed: {e}")
@@ -81,7 +87,13 @@ def ensure_postgresql_support():
                 database_url = database_url.replace('postgres://', 'postgresql://', 1)
                 print("✅ Fixed postgres:// -> postgresql://")
             
-            engine = create_engine(database_url, strategy='mock', executor=lambda sql, *_: None)
+            try:
+                from sqlalchemy.testing.engines import mock
+                engine = mock.create_mock_engine(database_url, executor=lambda sql, *_: None)
+            except ImportError:
+                # Fallback to older API
+                engine = create_engine(database_url, strategy='mock', executor=lambda sql, *_: None)
+            
             print("✅ Environment URL validation successful")
         except Exception as e:
             print(f"⚠️ Environment URL test failed: {e}")

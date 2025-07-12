@@ -67,7 +67,13 @@ def preload_postgresql_support():
         
         # Step 5: Test engine creation
         from sqlalchemy import create_engine
-        test_engine = create_engine(database_url, strategy='mock', executor=lambda sql, *_: None)
+        try:
+            from sqlalchemy.testing.engines import mock
+            test_engine = mock.create_mock_engine(database_url, executor=lambda sql, *_: None)
+        except ImportError:
+            # Fallback for older SQLAlchemy versions
+            test_engine = create_engine(database_url, strategy='mock', executor=lambda sql, *_: None)
+        
         logger.info("PostgreSQL engine creation test successful")
         
         logger.info("PostgreSQL support pre-loaded successfully!")

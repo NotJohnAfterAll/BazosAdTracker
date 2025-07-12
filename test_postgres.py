@@ -62,7 +62,9 @@ def test_postgresql_connectivity():
     print("\nTest 5: Engine creation")
     try:
         from sqlalchemy import create_engine
-        engine = create_engine(database_url, strategy='mock', executor=lambda sql, *_: None)
+        from sqlalchemy.testing.engines import mock
+        # Use newer mock engine API
+        engine = mock.create_mock_engine(database_url, executor=lambda sql, *_: None)
         print("✅ Engine created successfully")
     except Exception as e:
         print(f"❌ Engine creation failed: {e}")
