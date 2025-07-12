@@ -1,12 +1,14 @@
 # Multi-stage build for production deployment
 # Stage 1: Build frontend
-FROM node:18-alpine AS frontend-builder
+FROM node:18-bullseye AS frontend-builder
 
 WORKDIR /app/frontend
 
 # Copy package files first for better caching
 COPY frontend/package*.json ./
-RUN npm ci
+
+# Clean install with proper platform support
+RUN npm ci --platform=linux --arch=x64
 
 # Copy frontend source and build
 COPY frontend/ ./

@@ -16,8 +16,15 @@ python init_db.py
 # Build frontend
 echo "🏗️ Building frontend..."
 cd frontend
+
+# Clean install to avoid platform issues
+echo "📦 Installing frontend dependencies..."
+rm -rf node_modules package-lock.json
 npm install
+
+echo "🔨 Building frontend assets..."
 npm run build
+
 cd ..
 
 # Set up data directory

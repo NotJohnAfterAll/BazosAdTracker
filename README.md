@@ -95,6 +95,7 @@ Create a `.env` file in the root directory:
 ```env
 # Application Settings
 SECRET_KEY=your-secret-key-here
+JWT_SECRET_KEY=your-jwt-secret-key-here
 FLASK_ENV=development
 
 # Database (leave empty for SQLite)
@@ -144,6 +145,7 @@ LOG_LEVEL=INFO
 ```env
 # Required for production
 SECRET_KEY=very-strong-secret-key-here
+JWT_SECRET_KEY=very-strong-jwt-secret-key-here
 FLASK_ENV=production
 DATABASE_URL=postgresql://user:password@db:5432/bazos_tracker
 
@@ -159,17 +161,48 @@ LOG_LEVEL=WARNING
    - Set up PostgreSQL database service
    - Configure environment variables
 
-2. **Required Environment Variables**
+2. **PostgreSQL Database Setup in Coolify**
+   
+   **Step 1: Create PostgreSQL Service**
+   - In your Coolify project, click "Add Service"
+   - Select "Database" → "PostgreSQL"
+   - Configure the following:
+     ```
+     Service Name: bazos-postgres
+     Database Name: bazos_tracker
+     Username: bazos_user
+     Password: <generate-strong-password>
+     Version: 15 (recommended)
+     ```
+   
+   **Step 2: Get Connection Details**
+   After the database is created, Coolify will provide:
+   - **Internal hostname**: `bazos-postgres` (service name)
+   - **Port**: `5432`
+   - **Database**: `bazos_tracker`
+   - **Username**: `bazos_user`
+   - **Password**: The one you set above
+   
+   **Step 3: Construct DATABASE_URL**
+   Your DATABASE_URL will be:
+   ```
+   postgresql://bazos_user:your-password@bazos-postgres:5432/bazos_tracker
+   ```
+
+3. **Required Environment Variables**
    ```env
-   SECRET_KEY=<generated-secret>
-   DATABASE_URL=<postgresql-connection-string>
+   SECRET_KEY=<generated-secret-32-chars>
+   JWT_SECRET_KEY=<generated-jwt-secret-32-chars>
+   DATABASE_URL=postgresql://bazos_user:your-password@bazos-postgres:5432/bazos_tracker
    FLASK_ENV=production
    ```
 
-3. **Build Configuration**
+4. **Build Configuration**
    - Build command: `./deploy.sh`
    - Port: `5000`
    - Health check: `/api/health`
+
+> **Note**: The Dockerfile uses Debian-based Node.js image instead of Alpine to avoid Rollup native dependency issues in production builds.
 
 ## User Guide
 
@@ -286,6 +319,11 @@ LOG_LEVEL=WARNING
    npm install
    npm run build
    ```
+
+4. **Docker Build Issues (Rollup/Alpine)**
+   - Error: `Cannot find module @rollup/rollup-linux-x64-musl`
+   - Solution: The Dockerfile uses Debian instead of Alpine to avoid this issue
+   - If building locally on Alpine: `npm ci --platform=linux --arch=x64`
 
 #### Performance Optimization
 - **Database Indexing**: Automatically applied to key columns
@@ -425,16 +463,35 @@ This project is licensed under the MIT License. See LICENSE file for details.
 
 ## 🚀 Quick Deployment (Coolify)
 
-### 1. Environment Variables
+### 1. PostgreSQL Database Setup
+1. **Create Database Service**:
+   - Go to your Coolify project
+   - Click "Add Service" → "Database" → "PostgreSQL"
+   - Set these values:
+     ```
+     Service Name: bazos-postgres
+     Database Name: bazos_tracker
+     Username: bazos_user
+     Password: [generate strong password]
+     Version: 15
+     ```
+
+2. **Note the Connection Details**:
+   - Hostname: `bazos-postgres` (internal service name)
+   - Port: `5432`
+   - Database: `bazos_tracker`
+   - Username: `bazos_user`
+
+### 2. Environment Variables
 Set these in your Coolify application:
 
 ```bash
-# Required - Security
+# Required - Security (generate strong random strings)
 SECRET_KEY=your-super-secret-key-here-make-it-long-and-random
 JWT_SECRET_KEY=your-jwt-secret-key-different-from-above
 
-# Database (Coolify provides this automatically)
-DATABASE_URL=postgresql://user:pass@host:port/dbname
+# Database (use your PostgreSQL service details)
+DATABASE_URL=postgresql://bazos_user:your-password@bazos-postgres:5432/bazos_tracker
 
 # Application Settings
 FLASK_ENV=production
@@ -448,18 +505,19 @@ MAX_ADS_PER_KEYWORD=50
 LOG_LEVEL=INFO
 ```
 
-### 2. Coolify Configuration
-- **Build Pack**: Docker
-- **Port**: 5000
-- **Health Check**: `/api/health`
-- **Auto Deploy**: Enable for automatic deployments
+### 3. Application Deployment
+1. **Add Application Service**:
+   - Click "Add Service" → "Application"
+   - Connect your Git repository
+   - Set build command: `./deploy.sh`
+   - Set port: `5000`
+   - Set health check: `/api/health`
 
-### 3. Deploy
-1. Connect your Git repository to Coolify
-2. Set environment variables above
-3. Click Deploy
-4. **Database is automatically created** - no manual setup needed!
-5. Visit your domain and create your first account!
+2. **Deploy**:
+   - Click Deploy
+   - Wait for build to complete
+   - Database tables will be created automatically
+   - Visit your domain and create your first account!
 
 ### 🗄️ Database Creation
 - **Production**: PostgreSQL database is automatically provided by Coolify
@@ -616,6 +674,9 @@ GET /             # Serve frontend (catch-all)
 - Verify DATABASE_URL is correct
 - Check database server is running
 - Ensure proper credentials
+- **For Coolify**: Make sure both app and database are in the same project
+- **For Coolify**: Use internal service name (e.g., `bazos-postgres`) not external IP
+- **For Coolify**: Check that database service is running in the Services tab
 
 **Authentication not working:**
 - Check SECRET_KEY and JWT_SECRET_KEY are set
