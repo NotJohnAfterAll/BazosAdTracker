@@ -92,7 +92,16 @@ def main():
     # Import and start the main Flask app
     logger.info("Starting Flask application...")
     try:
-        from app import app, socketio
+        # Add current directory to Python path to prioritize app.py over app/ directory
+        import sys
+        if '.' not in sys.path:
+            sys.path.insert(0, '.')
+        
+        # Now we can import from app.py file
+        import app as main_app
+        
+        app = main_app.app
+        socketio = main_app.socketio
         
         # Get configuration
         host = os.getenv('HOST', '0.0.0.0')
@@ -108,6 +117,10 @@ def main():
         
     except Exception as e:
         logger.error(f"Failed to start Flask application: {e}")
+        logger.error(f"Error details: {type(e).__name__}: {str(e)}")
+        # Print more debugging info
+        import traceback
+        logger.error(f"Traceback: {traceback.format_exc()}")
         sys.exit(1)
 
 if __name__ == "__main__":

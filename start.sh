@@ -1,14 +1,22 @@
 #!/bin/bash
 set -e
 
-echo "🚀 Starting BazosChecker with user authentication..."
+echo "Starting BazosChecker with PostgreSQL support..."
+
+# Setup PostgreSQL support first
+echo "Setting up PostgreSQL support..."
+python setup_postgres.py || echo "PostgreSQL setup encountered issues, will attempt fallback"
 
 # Install Python dependencies
-echo "📦 Installing Python dependencies..."
+echo "Installing Python dependencies..."
 pip install -r requirements.txt
 
+# Test PostgreSQL connectivity
+echo "Testing PostgreSQL connectivity..."
+python test_postgres.py || echo "PostgreSQL test failed - check logs above"
+
 # Initialize database
-echo "🗄️ Initializing database..."
+echo "Initializing database..."
 python init_db.py
 
 # Set up data directory with proper permissions
@@ -70,8 +78,8 @@ fi
 sleep 2
 
 # Start Flask app in background
-echo "🌐 Starting Flask app..."
-python app.py 2>&1 | tee logs/flask.log &
+echo "Starting Flask app with PostgreSQL support..."
+python run_app.py 2>&1 | tee logs/flask.log &
 FLASK_PID=$!
 echo "Flask app started with PID: $FLASK_PID"
 
@@ -87,8 +95,8 @@ while true; do
     
     # Check if Flask app is still running
     if ! kill -0 $FLASK_PID 2>/dev/null; then
-        echo "⚠️ Flask app crashed, restarting..."
-        python app.py 2>&1 | tee logs/flask.log &
+        echo "Flask app crashed, restarting..."
+        python run_app.py 2>&1 | tee logs/flask.log &
         FLASK_PID=$!
         echo "Flask app restarted with PID: $FLASK_PID"
     fi

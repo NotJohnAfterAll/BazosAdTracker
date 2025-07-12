@@ -89,5 +89,5 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
 # Expose the port (Coolify will map this automatically)
 EXPOSE ${PORT:-5000}
 
-# Use startup script to handle PostgreSQL pre-loading
-CMD ["python", "startup.py"]
+# Use start.sh script which now includes PostgreSQL setup
+CMD ["./start.sh"]

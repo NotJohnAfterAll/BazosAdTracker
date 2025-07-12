@@ -202,7 +202,7 @@ LOG_LEVEL=WARNING
    - Port: `5000`
    - Health check: `/api/health`
 
-> **Note**: The Dockerfile uses Debian-based Node.js 20 image and robust npm install strategies to avoid Rollup native dependency issues. If you encounter build issues, use the included troubleshooting scripts (`troubleshoot-frontend.sh` for Unix or `troubleshoot-frontend.bat` for Windows).
+> **Note**: The application now includes comprehensive PostgreSQL support with automatic URL fixing (`postgres://` → `postgresql://`), dialect pre-loading, and SQLite fallback. The `run_app.py` wrapper ensures proper module loading and PostgreSQL setup.
 
 ## User Guide
 
