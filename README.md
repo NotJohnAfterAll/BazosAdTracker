@@ -764,6 +764,41 @@ yarn build
 - NPM cache issues in Docker layers
 - Use the alternative Dockerfile which has more robust fallback strategies
 
+**PostgreSQL connection errors in production:**
+- `Can't load plugin: sqlalchemy.dialects:postgres` → Missing psycopg2 driver
+- `No module named 'psycopg2'` → PostgreSQL dependencies not installed
+
+**Solutions for PostgreSQL issues:**
+1. **Use troubleshooting script:**
+```bash
+chmod +x troubleshoot-postgres.sh
+./troubleshoot-postgres.sh
+```
+
+2. **Manual fixes:**
+```bash
+# Install system dependencies (in Dockerfile)
+apt-get update && apt-get install -y libpq-dev gcc python3-dev build-essential
+
+# Install Python PostgreSQL driver
+pip install --upgrade pip
+pip install psycopg2-binary
+
+# Test installation
+python -c "import psycopg2; print('PostgreSQL driver OK')"
+python -c "import sqlalchemy.dialects.postgresql; print('SQLAlchemy dialect OK')"
+```
+
+3. **Check environment variables:**
+```bash
+echo $DATABASE_URL  # Should be postgresql://user:pass@host:port/dbname
+```
+
+**Pip cache permission warnings:**
+- Add to Dockerfile: `ENV PIP_NO_CACHE_DIR=1 PIP_DISABLE_PIP_VERSION_CHECK=1`
+- Install dependencies as root before switching to app user
+- Or run: `chown -R appuser:appuser /home/appuser/.cache`
+
 ### Health Check
 Visit `/api/health` for system status:
 ```json

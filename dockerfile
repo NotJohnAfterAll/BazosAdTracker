@@ -39,7 +39,9 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     FLASK_ENV=production \
     FLASK_DEBUG=0 \
     PORT=${PORT:-5000} \
-    HOST=${HOST:-0.0.0.0}
+    HOST=${HOST:-0.0.0.0} \
+    PIP_NO_CACHE_DIR=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1
 
 # Create non-root user for security
 RUN groupadd -g 1001 appuser && \
@@ -48,16 +50,23 @@ RUN groupadd -g 1001 appuser && \
 # Set work directory
 WORKDIR /app
 
-# Install system dependencies (removed supervisor for simplicity)
+# Install system dependencies (including PostgreSQL client libraries)
 RUN apt-get update && apt-get install -y \
     curl \
     wget \
+    libpq-dev \
+    gcc \
+    python3-dev \
+    build-essential \
     && rm -rf /var/lib/apt/lists/* \
     && apt-get clean
 
 # Copy and install Python dependencies
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir --upgrade pip && \
+    pip install --no-cache-dir -r requirements.txt && \
+    python -c "import psycopg2; print('✅ PostgreSQL support installed')" || \
+    (echo "❌ PostgreSQL support installation failed" && exit 1)
 
 # Copy application code
 COPY . .
