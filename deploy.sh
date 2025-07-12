@@ -14,6 +14,10 @@ echo "🔍 Testing PostgreSQL support..."
 python -c "import psycopg2; print('✅ psycopg2 available')" 2>/dev/null || echo "⚠️ psycopg2 not available - SQLite will be used"
 python -c "import sqlalchemy.dialects.postgresql; print('✅ PostgreSQL dialect available')" 2>/dev/null || echo "⚠️ PostgreSQL dialect not available"
 
+# Run comprehensive PostgreSQL test
+echo "🧪 Running PostgreSQL connectivity test..."
+python test_postgres.py || echo "⚠️ PostgreSQL test failed - check logs above"
+
 # Initialize database
 echo "🗄️ Initializing database..."
 python init_db.py

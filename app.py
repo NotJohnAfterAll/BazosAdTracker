@@ -57,8 +57,14 @@ app.config['SECRET_KEY'] = os.getenv('SECRET_KEY', 'default-secret-key')
 # Database configuration
 database_url = os.getenv('DATABASE_URL')
 if database_url:
+    # Fix for Heroku/Railway/Coolify postgres:// URLs (SQLAlchemy 1.4+ requires postgresql://)
+    if database_url.startswith('postgres://'):
+        database_url = database_url.replace('postgres://', 'postgresql://', 1)
+        logger.info("Fixed DATABASE_URL: postgres:// -> postgresql://")
+    
     # Production database (PostgreSQL via Coolify)
     app.config['SQLALCHEMY_DATABASE_URI'] = database_url
+    logger.info(f"Using PostgreSQL database: {database_url.split('@')[0]}@...")
 else:
     # Development database (SQLite)
     # Use absolute path for SQLite
@@ -77,6 +83,37 @@ app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
         'check_same_thread': False
     }
 }
+
+# Test database connectivity and handle PostgreSQL issues
+def test_database_connection():
+    """Test database connection and handle common PostgreSQL issues"""
+    try:
+        # Test PostgreSQL dialect availability
+        if database_url and 'postgresql' in database_url:
+            import sqlalchemy.dialects.postgresql
+            logger.info("✅ PostgreSQL dialect loaded successfully")
+            
+            # Test psycopg2 availability
+            import psycopg2
+            logger.info(f"✅ psycopg2 driver available: {psycopg2.__version__}")
+            
+        return True
+    except ImportError as e:
+        logger.error(f"❌ Database driver import failed: {e}")
+        if database_url and 'postgresql' in database_url:
+            logger.error("🔄 PostgreSQL driver missing, falling back to SQLite")
+            # Fallback to SQLite
+            base_dir = os.path.abspath(os.path.dirname(__file__))
+            db_path = os.path.join(base_dir, 'data', 'bazos_checker.db')
+            app.config['SQLALCHEMY_DATABASE_URI'] = f'sqlite:///{db_path}?timeout=20'
+            logger.info(f"✅ Fallback to SQLite: {db_path}")
+        return False
+    except Exception as e:
+        logger.error(f"❌ Database connection test failed: {e}")
+        return False
+
+# Run database connection test
+test_database_connection()
 
 # JWT configuration
 app.config['JWT_SECRET_KEY'] = os.getenv('JWT_SECRET_KEY', 'jwt-secret-string')

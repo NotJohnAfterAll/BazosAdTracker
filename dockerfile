@@ -68,8 +68,10 @@ RUN pip install --no-cache-dir --upgrade pip && \
     python -c "import psycopg2; print('✅ PostgreSQL support installed')" || \
     (echo "❌ PostgreSQL support installation failed" && exit 1)
 
-# Copy application code
+# Copy application code and test PostgreSQL setup
 COPY . .
+RUN python test_postgres.py || \
+    (echo "❌ PostgreSQL connectivity test failed" && exit 1)
 
 # Copy built frontend from previous stage to serve as static files
 COPY --from=frontend-builder /app/frontend/dist ./frontend/dist

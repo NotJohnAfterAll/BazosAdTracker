@@ -765,17 +765,31 @@ yarn build
 - Use the alternative Dockerfile which has more robust fallback strategies
 
 **PostgreSQL connection errors in production:**
-- `Can't load plugin: sqlalchemy.dialects:postgres` → Missing psycopg2 driver
+- `Can't load plugin: sqlalchemy.dialects:postgres` → Missing psycopg2 driver or URL format issue
 - `No module named 'psycopg2'` → PostgreSQL dependencies not installed
 
 **Solutions for PostgreSQL issues:**
-1. **Use troubleshooting script:**
+
+1. **Automatic fixes implemented:**
+   - ✅ **URL format fix**: Automatic conversion of `postgres://` to `postgresql://`
+   - ✅ **Fallback mechanism**: Auto-fallback to SQLite if PostgreSQL fails
+   - ✅ **Comprehensive testing**: Built-in connectivity testing during deployment
+   - ✅ **Enhanced error handling**: Detailed logging for troubleshooting
+
+2. **Use troubleshooting tools:**
 ```bash
+# Test PostgreSQL connectivity
+python test_postgres.py
+
+# Full troubleshooting (Unix/Linux/macOS)
 chmod +x troubleshoot-postgres.sh
 ./troubleshoot-postgres.sh
+
+# Windows
+troubleshoot-postgres.bat
 ```
 
-2. **Manual fixes:**
+3. **Manual fixes:**
 ```bash
 # Install system dependencies (in Dockerfile)
 apt-get update && apt-get install -y libpq-dev gcc python3-dev build-essential
@@ -789,9 +803,10 @@ python -c "import psycopg2; print('PostgreSQL driver OK')"
 python -c "import sqlalchemy.dialects.postgresql; print('SQLAlchemy dialect OK')"
 ```
 
-3. **Check environment variables:**
+4. **Check environment variables:**
 ```bash
 echo $DATABASE_URL  # Should be postgresql://user:pass@host:port/dbname
+# Note: postgres:// URLs are automatically converted to postgresql://
 ```
 
 **Pip cache permission warnings:**

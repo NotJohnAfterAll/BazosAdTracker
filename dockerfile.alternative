@@ -78,10 +78,14 @@ RUN echo "Installing Python dependencies..." && \
     echo "Testing PostgreSQL support..." && \
     python -c "import psycopg2; print('✅ psycopg2 imported successfully')" && \
     python -c "import sqlalchemy.dialects.postgresql; print('✅ PostgreSQL dialect loaded')" && \
+    python -c "from sqlalchemy import create_engine; engine = create_engine('postgresql://test:test@localhost/test', strategy='mock', executor=lambda sql, *_: None); print('✅ PostgreSQL engine creation successful')" && \
     echo "✅ All PostgreSQL dependencies are working"
 
-# Copy application code
+# Copy application code and run comprehensive tests
 COPY . .
+RUN echo "Running PostgreSQL connectivity test..." && \
+    python test_postgres.py && \
+    echo "✅ PostgreSQL connectivity verified"
 
 # Copy built frontend from previous stage to serve as static files
 COPY --from=frontend-builder /app/frontend/dist ./frontend/dist
