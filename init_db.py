@@ -66,6 +66,32 @@ def create_app():
     app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
     app.config['SECRET_KEY'] = os.getenv('SECRET_KEY', 'dev-secret-key-change-in-production')
     
+    # Configure database engine options based on database type
+    if database_url and 'postgresql' in database_url:
+        # PostgreSQL configuration
+        app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
+            'pool_timeout': 20,
+            'pool_recycle': 3600,  # Recycle connections every hour
+            'pool_pre_ping': True,
+            'connect_args': {
+                'connect_timeout': 10,
+                # PostgreSQL-specific options can be added here
+            }
+        }
+        print("✅ Configured PostgreSQL engine options")
+    else:
+        # SQLite configuration for better concurrent access
+        app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
+            'pool_timeout': 20,
+            'pool_recycle': -1,
+            'pool_pre_ping': True,
+            'connect_args': {
+                'timeout': 20,
+                'check_same_thread': False
+            }
+        }
+        print("✅ Configured SQLite engine options")
+    
     # Initialize extensions with enhanced error handling
     try:
         db.init_app(app)

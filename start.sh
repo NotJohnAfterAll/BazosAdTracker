@@ -68,8 +68,8 @@ trap cleanup SIGTERM SIGINT
 
 # Start scheduler in background (only in production)
 if [ "$FLASK_ENV" = "production" ]; then
-    echo "📅 Starting scheduler..."
-    python scheduler.py 2>&1 | tee logs/scheduler.log &
+    echo "Starting scheduler with PostgreSQL support..."
+    python run_scheduler.py 2>&1 | tee logs/scheduler.log &
     SCHEDULER_PID=$!
     echo "Scheduler started with PID: $SCHEDULER_PID"
 fi
@@ -87,8 +87,8 @@ echo "Flask app started with PID: $FLASK_PID"
 while true; do
     # Check if scheduler is still running
     if ! kill -0 $SCHEDULER_PID 2>/dev/null; then
-        echo "⚠️ Scheduler crashed, restarting..."
-        python scheduler.py 2>&1 | tee logs/scheduler.log &
+        echo "Scheduler crashed, restarting..."
+        python run_scheduler.py 2>&1 | tee logs/scheduler.log &
         SCHEDULER_PID=$!
         echo "Scheduler restarted with PID: $SCHEDULER_PID"
     fi

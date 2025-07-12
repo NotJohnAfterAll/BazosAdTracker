@@ -18,19 +18,14 @@ from app.utils.bazos_scraper_fixed import BazosScraper
 from utils.stats_tracker import StatsTracker
 
 # Import database models and services
-from app import create_app
+import sys
+import importlib.util
+spec = importlib.util.spec_from_file_location("main_app", os.path.join(os.path.dirname(__file__), "app.py"))
+main_app = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(main_app)
+
 from app.models import db, User, UserKeyword, UserAd, UserFavorite
 from app.user_service import UserService
-
-# Import our modules        try:
-# Clear "NEW" tags from ads older than 6 hours
-# Use timezone-naive comparison since database stores timezone-naive datetimes
-six_hours_ago = datetime.utcnow() - timedelta(hours=6)
-
-updated_count = UserAd.query.filter(
-    UserAd.is_new == True,
-    UserAd.marked_new_at < six_hours_ago
-).update({'is_new': False})
 
 # Configure logging
 logging.basicConfig(
@@ -51,7 +46,7 @@ class AdScheduler:
         self.check_interval = int(os.getenv('CHECK_INTERVAL', 300))  # Default 5 minutes
         
         # Initialize Flask app and database context
-        self.app = create_app()
+        self.app = main_app.create_app()
         self.app_context = self.app.app_context()
         self.app_context.push()
         

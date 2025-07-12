@@ -57,46 +57,72 @@ except ImportError as e:
 # Threading lock to prevent concurrent database operations
 check_in_progress = threading.Lock()
 
-# Load environment variables
-load_dotenv()
+def create_app():
+    """Create and configure the Flask application"""
+    # Load environment variables
+    load_dotenv()
 
-app = Flask(__name__)
-app.config['SECRET_KEY'] = os.getenv('SECRET_KEY', 'default-secret-key')
+    app = Flask(__name__)
+    app.config['SECRET_KEY'] = os.getenv('SECRET_KEY', 'default-secret-key')
 
-# Database configuration
-database_url = os.getenv('DATABASE_URL')
-if database_url:
-    # Fix for Heroku/Railway/Coolify postgres:// URLs (SQLAlchemy 1.4+ requires postgresql://)
-    if database_url.startswith('postgres://'):
-        database_url = database_url.replace('postgres://', 'postgresql://', 1)
-        logger.info("Fixed DATABASE_URL: postgres:// -> postgresql://")
+    # Database configuration
+    database_url = os.getenv('DATABASE_URL')
+    if database_url:
+        # Fix for Heroku/Railway/Coolify postgres:// URLs (SQLAlchemy 1.4+ requires postgresql://)
+        if database_url.startswith('postgres://'):
+            database_url = database_url.replace('postgres://', 'postgresql://', 1)
+            logger.info("Fixed DATABASE_URL: postgres:// -> postgresql://")
+        
+        # Production database (PostgreSQL via Coolify)
+        app.config['SQLALCHEMY_DATABASE_URI'] = database_url
+        logger.info(f"Using PostgreSQL database: {database_url.split('@')[0]}@...")
+    else:
+        # Development database (SQLite)
+        # Use absolute path for SQLite
+        base_dir = os.path.abspath(os.path.dirname(__file__))
+        db_path = os.path.join(base_dir, 'data', 'bazos_checker.db')
+        app.config['SQLALCHEMY_DATABASE_URI'] = f'sqlite:///{db_path}?timeout=20'
+
+    app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+
+    # Configure database engine options based on database type
+    if database_url and 'postgresql' in database_url:
+        # PostgreSQL configuration
+        app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
+            'pool_timeout': 20,
+            'pool_recycle': 3600,  # Recycle connections every hour
+            'pool_pre_ping': True,
+            'connect_args': {
+                'connect_timeout': 10,
+                # PostgreSQL-specific options can be added here
+            }
+        }
+        logger.info("✅ Configured PostgreSQL engine options")
+    else:
+        # SQLite configuration for better concurrent access
+        app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
+            'pool_timeout': 20,
+            'pool_recycle': -1,
+            'pool_pre_ping': True,
+            'connect_args': {
+                'timeout': 20,
+                'check_same_thread': False
+            }
+        }
+        logger.info("✅ Configured SQLite engine options")
     
-    # Production database (PostgreSQL via Coolify)
-    app.config['SQLALCHEMY_DATABASE_URI'] = database_url
-    logger.info(f"Using PostgreSQL database: {database_url.split('@')[0]}@...")
-else:
-    # Development database (SQLite)
-    # Use absolute path for SQLite
-    base_dir = os.path.abspath(os.path.dirname(__file__))
-    db_path = os.path.join(base_dir, 'data', 'bazos_checker.db')
-    app.config['SQLALCHEMY_DATABASE_URI'] = f'sqlite:///{db_path}?timeout=20'
+    return app
 
-app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
-# Configure SQLite for better concurrent access
-app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
-    'pool_timeout': 20,
-    'pool_recycle': -1,
-    'pool_pre_ping': True,
-    'connect_args': {
-        'timeout': 20,
-        'check_same_thread': False
-    }
-}
+# Create the main app instance
+app = create_app()
 
 # Test database connectivity and handle PostgreSQL issues
 def test_database_connection():
     """Test database connection and handle common PostgreSQL issues"""
     try:
+        # Get database URL from app config
+        database_url = app.config.get('SQLALCHEMY_DATABASE_URI')
+        
         # Test PostgreSQL dialect availability
         if database_url and 'postgresql' in database_url:
             # Explicitly import and register PostgreSQL dialect
@@ -130,6 +156,7 @@ def test_database_connection():
         return True
     except (ImportError, Exception) as e:
         logger.error(f"❌ Database driver/dialect error: {e}")
+        database_url = app.config.get('SQLALCHEMY_DATABASE_URI')
         if database_url and 'postgresql' in database_url:
             logger.error("🔄 PostgreSQL setup failed, falling back to SQLite")
             # Fallback to SQLite
