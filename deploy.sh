@@ -20,7 +20,19 @@ cd frontend
 # Clean install to avoid platform issues
 echo "📦 Installing frontend dependencies..."
 rm -rf node_modules package-lock.json
-npm install
+
+# Multiple fallback strategies for npm install
+echo "Attempting npm install with fallback strategies..."
+if npm install --platform=linux --arch=x64 --optional=false; then
+    echo "✅ npm install succeeded with platform flags"
+elif npm install --no-optional; then
+    echo "✅ npm install succeeded without optional dependencies"
+elif npm install --force; then
+    echo "⚠️ npm install succeeded with --force flag"
+else
+    echo "❌ All npm install attempts failed"
+    exit 1
+fi
 
 echo "🔨 Building frontend assets..."
 npm run build

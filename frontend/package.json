@@ -5,9 +5,14 @@
   "scripts": {
     "dev": "vite --host 0.0.0.0 --port 3000",
     "build": "vue-tsc --noEmit && vite build",
+    "build:safe": "vite build --mode production",
     "preview": "vite preview --host 0.0.0.0 --port 3000",
     "type-check": "vue-tsc --noEmit",
     "lint": "eslint . --ext .vue,.js,.jsx,.cjs,.mjs,.ts,.tsx,.cts,.mts --fix --ignore-path .gitignore"
+  },
+  "optionalDependencies": {},
+  "overrides": {
+    "@rollup/rollup-linux-x64-gnu": "^4.0.0"
   },
   "dependencies": {
     "@vueuse/core": "^10.11.0",

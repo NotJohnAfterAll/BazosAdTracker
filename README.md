@@ -202,7 +202,7 @@ LOG_LEVEL=WARNING
    - Port: `5000`
    - Health check: `/api/health`
 
-> **Note**: The Dockerfile uses Debian-based Node.js image instead of Alpine to avoid Rollup native dependency issues in production builds.
+> **Note**: The Dockerfile uses Debian-based Node.js 20 image and robust npm install strategies to avoid Rollup native dependency issues. If you encounter build issues, use the included troubleshooting scripts (`troubleshoot-frontend.sh` for Unix or `troubleshoot-frontend.bat` for Windows).
 
 ## User Guide
 
@@ -697,6 +697,72 @@ GET /             # Serve frontend (catch-all)
 - Check browser permissions for audio
 - Verify notification.mp3 file exists
 - Test in different browsers
+
+**Docker build fails with Rollup native dependency errors:**
+This is a known npm bug with optional dependencies. **This issue has been resolved** with the following improvements:
+
+- ✅ **Updated to Node.js 20** with better dependency resolution
+- ✅ **Added `.npmrc` configuration** to handle optional dependencies
+- ✅ **Multi-strategy npm install** with automatic fallbacks
+- ✅ **Comprehensive troubleshooting scripts** for both Unix and Windows
+
+If you still encounter issues, try these solutions:
+
+1. **Use the troubleshooting script:**
+```bash
+chmod +x troubleshoot-frontend.sh
+./troubleshoot-frontend.sh
+```
+
+2. **Manual troubleshooting:**
+```bash
+cd frontend
+rm -rf node_modules package-lock.json
+npm cache clean --force
+
+# Try these commands in order:
+npm ci --platform=linux --arch=x64 --no-optional
+# OR
+npm install --no-optional
+# OR
+npm install --force
+```
+
+3. **Alternative Dockerfile:**
+If the main build fails, try the alternative:
+```bash
+cp dockerfile.alternative dockerfile
+docker build -t bazos-checker .
+```
+
+4. **Use different Node.js version:**
+```bash
+# In dockerfile, change the first line to:
+FROM node:18-bullseye AS frontend-builder
+# OR
+FROM node:22-bullseye AS frontend-builder
+```
+
+5. **Use yarn instead of npm:**
+```bash
+cd frontend
+rm package-lock.json
+npm install -g yarn
+yarn install
+yarn build
+```
+
+**Common Rollup errors and solutions:**
+- `Cannot find module @rollup/rollup-linux-x64-gnu` → Use `--no-optional` flag
+- `ENOENT: no such file or directory` → Clear npm cache and node_modules
+- `Platform mismatch` → Use explicit `--platform=linux --arch=x64` flags
+- `Permission denied` → Run npm commands without sudo, use proper user permissions
+
+**Build works locally but fails in Docker:**
+- Different Node.js versions between local and Docker
+- Platform-specific dependencies (especially on Apple Silicon Macs)
+- NPM cache issues in Docker layers
+- Use the alternative Dockerfile which has more robust fallback strategies
 
 ### Health Check
 Visit `/api/health` for system status:

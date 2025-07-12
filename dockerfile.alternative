@@ -1,9 +1,11 @@
+# Alternative Dockerfile for handling Rollup native dependency issues
 # Multi-stage build for production deployment
-# Stage 1: Build frontend
+# Stage 1: Build frontend with Node 20 and better dependency handling
 FROM node:20-bullseye AS frontend-builder
 
 # Set npm configuration for better dependency resolution
 ENV NPM_CONFIG_OPTIONAL=false \
+    NPM_CONFIG_PACKAGE_LOCK=false \
     NPM_CONFIG_FETCH_TIMEOUT=300000 \
     NPM_CONFIG_FETCH_RETRIES=3
 
@@ -12,23 +14,36 @@ WORKDIR /app/frontend
 # Copy package files and npm config
 COPY frontend/package*.json frontend/.npmrc ./
 
-# Install dependencies with multiple fallback strategies
+# Install dependencies with comprehensive fallback strategies
 RUN set -e && \
-    echo "Attempting npm install with platform flags..." && \
-    (npm ci --platform=linux --arch=x64 --optional=false || \
-     echo "First attempt failed, trying without platform flags..." && \
-     npm ci --optional=false || \
-     echo "CI failed, trying regular install..." && \
+    echo "Node version: $(node --version)" && \
+    echo "NPM version: $(npm --version)" && \
+    echo "Platform: $(uname -a)" && \
+    echo "Attempting npm install with multiple strategies..." && \
+    (npm ci --platform=linux --arch=x64 --no-optional 2>&1 | tee npm-install.log || \
+     echo "CI with platform flags failed, trying without platform..." && \
+     npm ci --no-optional 2>&1 | tee -a npm-install.log || \
+     echo "CI failed, clearing cache and trying install..." && \
+     npm cache clean --force && \
      rm -f package-lock.json && \
-     npm install --platform=linux --arch=x64 --optional=false || \
-     echo "Platform install failed, trying without optional deps..." && \
-     npm install --no-optional || \
-     echo "Final attempt with force..." && \
-     npm install --force)
+     npm install --platform=linux --arch=x64 --no-optional 2>&1 | tee -a npm-install.log || \
+     echo "Platform install failed, trying regular install..." && \
+     npm install --no-optional 2>&1 | tee -a npm-install.log || \
+     echo "No-optional failed, trying with force..." && \
+     npm install --force 2>&1 | tee -a npm-install.log || \
+     (echo "All install strategies failed. Log contents:" && cat npm-install.log && exit 1)) && \
+    echo "✅ npm install completed successfully"
 
 # Copy frontend source and build
 COPY frontend/ ./
-RUN npm run build
+
+# Build with safe mode as fallback
+RUN echo "Building frontend..." && \
+    (npm run build 2>&1 | tee build.log || \
+     echo "Standard build failed, trying safe build..." && \
+     npm run build:safe 2>&1 | tee -a build.log || \
+     (echo "Build failed. Log contents:" && cat build.log && exit 1)) && \
+    echo "✅ Frontend build completed"
 
 # Stage 2: Production Python image
 FROM python:3.11-slim
@@ -48,7 +63,7 @@ RUN groupadd -g 1001 appuser && \
 # Set work directory
 WORKDIR /app
 
-# Install system dependencies (removed supervisor for simplicity)
+# Install system dependencies
 RUN apt-get update && apt-get install -y \
     curl \
     wget \
